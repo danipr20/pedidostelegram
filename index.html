@@ -127,51 +127,63 @@
     </div>
 
 <script>
-        // 1. Inicializamos la WebApp de Telegram y le decimos que está lista
-        const tg = window.Telegram.WebApp;
-        tg.ready(); // <-- ESTO ES VITAL. Si no se invoca, Telegram bloquea la salida de datos.
-        tg.expand();
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
 
-        // Leemos si el bot nos ha pedido domicilio ('d') o recoger ('r') desde la URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const metodo = urlParams.get('metodo');
+    // Capturamos el ChatID del usuario de forma nativa desde Telegram
+    const userContext = tg.initDataUnsafe;
+    const chatId = userContext?.user?.id || "402078740"; // Tu ID por defecto por seguridad
 
-        // Si es a domicilio, hacemos visible el campo de dirección
-        if (metodo === 'd') {
-            document.getElementById('grupo-direccion').style.display = 'block';
+    const urlParams = new URLSearchParams(window.location.search);
+    const metodo = urlParams.get('metodo');
+
+    if (metodo === 'd') {
+        document.getElementById('grupo-direccion').style.display = 'block';
+    }
+
+    function enviarAlBot() {
+        const nombre = document.getElementById('nombre').value.trim();
+        const telephone = document.getElementById('telefono').value.trim();
+        const direccion = document.getElementById('direccion').value.trim();
+
+        if (!nombre || !telephone) {
+            tg.showAlert("Por favor, rellena tu nombre y número de contacto.");
+            return;
         }
 
-        function enviarAlBot() {
-            const nombre = document.getElementById('nombre').value.trim();
-            const telefono = document.getElementById('telefono').value.trim();
-            const direccion = document.getElementById('direccion').value.trim();
-
-            // Validaciones básicas antes de enviar
-            if (!nombre || !telefono) {
-                tg.showAlert("Por favor, rellena tu nombre y número de contacto.");
-                return;
-            }
-
-            if (metodo === 'd' && !direccion) {
-                tg.showAlert("La dirección es obligatoria para envíos a domicilio.");
-                return;
-            }
-
-            // Estructuramos el objeto final
-            const datosFinales = {
-                nombre: nombre,
-                tel: telefono,
-                dir: metodo === 'd' ? direccion : 'Recogida en local'
-            };
-
-            // Mandamos los datos limpios al Trigger de n8n convirtiéndolos en texto string plano
-            tg.sendData(JSON.stringify(datosFinales));
-            
-            // Forzamos un retraso de 100ms antes de cerrar para asegurar que el mensaje sale del móvil
-            setTimeout(function() {
-                tg.close();
-            }, 100);
+        if (metodo === 'd' && !direccion) {
+            tg.showAlert("La dirección es obligatoria para envíos a domicilio.");
+            return;
         }
-    </script>
+
+        // Creamos la estructura exacta que tu n8n necesita recibir
+        const datosPedido = {
+            chatId: chatId.toString(),
+            action: `snd||${nombre.replace(/-/g, " ")}-${telephone}||${metodo === 'd' ? direccion.substring(0,40) : 'r'}`
+        };
+
+        // URL de producción o test de tu webhook de n8n (el nodo inicial de Telegram Trigger o Webhook)
+        // NOTA: Usa la URL del Webhook de n8n donde procesas los mensajes
+        const URL_N8N_WEBHOOK = "https://tu-servidor-n8n.com/webhook/tu-id-de-trigger"; 
+
+        // Enviamos los datos directamente a n8n por HTTP POST
+        fetch(URL_N8N_WEBHOOK, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(datosPedido)
+        })
+        .then(() => {
+            // Una vez que n8n ha recibido los datos, cerramos la ventana
+            tg.close();
+        })
+        .catch((error) => {
+            tg.showAlert("Error al conectar con el servidor. Inténtalo de nuevo.");
+            console.error(error);
+        });
+    }
+</script>
 </body>
 </html>
