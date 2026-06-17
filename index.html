@@ -128,20 +128,19 @@
         </div>
     </form>
 
-    <script>
+<script>
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
-        // Recuperamos el Query ID único necesario para responder a botones inline
         const queryId = tg.initDataUnsafe.query_id;
 
-        // Leemos las variables pasadas de forma segura por la URL
+        // Leemos las variables pasadas por la URL
         const urlParams = new URLSearchParams(window.location.search);
         const metodo = urlParams.get('metodo');
-        const tokenDinamico = urlParams.get('t'); // <- Capturamos el token de forma camuflada y temporal
+        const tokenDinamico = urlParams.get('t'); 
+        const productosTraidos = urlParams.get('c') || "Vacio"; // <- Capturamos la cesta original de Telegram
 
-        // Si es a domicilio, mostramos el input de dirección
         if (metodo === 'd') {
             document.getElementById('grupo-direccion').style.display = 'block';
         }
@@ -162,16 +161,17 @@
             }
 
             const destino = metodo === 'd' ? direccion.substring(0, 40) : 'r';
-            // Formato de acción definitivo: snd||Nombre-Telefono||Destino
-            const stringAccion = `snd||${nombre.replace(/\|\|/g, "").replace(/-/g, " ")}-${telefono.replace(/\|\|/g, "")}||${destino.replace(/\|\|/g, "")}`;
+            
+            // 🌟 FORMATEO MAESTRO: Juntamos Nombre-Telefono-Productos limpios en un solo bloque separado por guiones
+            const nombreClean = nombre.replace(/\|\|/g, "").replace(/-/g, " ");
+            const telClean = telefono.replace(/\|\|/g, "").replace(/-/g, " ");
+            const stringAccion = `snd||${nombreClean}-${telClean}-${productosTraidos}||${destino.replace(/\|\|/g, "")}`;
 
-            // Si por algún motivo no viene el token en la URL, usamos una alerta de aviso
             if (!tokenDinamico) {
                 tg.showAlert("Error de seguridad: Falta clave de sesión del bot.");
                 return;
             }
 
-            // Estructura oficial para inyectar el texto directamente al chat del bot
             const respuestaTelegram = {
                 web_app_query_id: queryId,
                 result: {
@@ -184,7 +184,6 @@
                 }
             };
 
-            // Enviamos los datos directamente a la API de Telegram usando el token dinámico de la URL
             fetch(`https://api.telegram.org/bot${tokenDinamico}/answerWebAppQuery`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
