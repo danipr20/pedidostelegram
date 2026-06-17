@@ -126,10 +126,11 @@
         <button id="btn-enviar" onclick="enviarAlBot()">Confirmar Pedido</button>
     </div>
 
-    <script>
-        // Inicializamos la WebApp de Telegram
+<script>
+        // 1. Inicializamos la WebApp de Telegram y le decimos que está lista
         const tg = window.Telegram.WebApp;
-        tg.expand(); // Fuerza a abrirse en tamaño completo de inmediato
+        tg.ready(); // <-- ESTO ES VITAL. Si no se invoca, Telegram bloquea la salida de datos.
+        tg.expand();
 
         // Leemos si el bot nos ha pedido domicilio ('d') o recoger ('r') desde la URL
         const urlParams = new URLSearchParams(window.location.search);
@@ -163,11 +164,13 @@
                 dir: metodo === 'd' ? direccion : 'Recogida en local'
             };
 
-            // Mandamos los datos limpios al Trigger de n8n a través del propio chat de Telegram
+            // Mandamos los datos limpios al Trigger de n8n convirtiéndolos en texto string plano
             tg.sendData(JSON.stringify(datosFinales));
             
-            // Cerramos la vista de la WebApp
-            tg.close();
+            // Forzamos un retraso de 100ms antes de cerrar para asegurar que el mensaje sale del móvil
+            setTimeout(function() {
+                tg.close();
+            }, 100);
         }
     </script>
 </body>
