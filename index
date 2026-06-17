@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Datos de Entrega - Don Fabio</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: var(--tg-theme-bg-color, #ffffff);
+            --text-color: var(--tg-theme-text-color, #222222);
+            --hint-color: var(--tg-theme-hint-color, #888888);
+            --input-bg: var(--tg-theme-secondary-bg-color, #f4f4f7);
+            --button-bg: var(--tg-theme-button-color, #248bca);
+            --button-text: var(--tg-theme-button-text-color, #ffffff);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 16px;
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .header h2 {
+            margin: 0 0 8px 0;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .header p {
+            margin: 0;
+            font-size: 14px;
+            color: var(--hint-color);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: var(--text-color);
+            opacity: 0.9;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            border-color: var(--button-bg);
+        }
+
+        input::placeholder {
+            color: var(--hint-color);
+            opacity: 0.6;
+        }
+
+        .footer {
+            margin-top: 32px;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            background-color: var(--button-bg);
+            color: var(--button-text);
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        button:active {
+            opacity: 0.85;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h2>📍 Datos de Confirmación</h2>
+        <p>Completa la información para procesar el pedido</p>
+    </div>
+
+    <div class="form-group">
+        <label for="nombre">Nombre para el pedido:</label>
+        <input type="text" id="nombre" placeholder="Ej: Dani" autocomplete="off" required>
+    </div>
+
+    <div class="form-group">
+        <label for="telefono">Teléfono móvil:</label>
+        <input type="tel" id="telefono" placeholder="Ej: 612345678" autocomplete="off" required>
+    </div>
+
+    <div class="form-group" id="grupo-direccion" style="display: none;">
+        <label for="direccion">Dirección completa de entrega:</label>
+        <input type="text" id="direccion" placeholder="Calle, número, piso, puerta..." autocomplete="off">
+    </div>
+
+    <div class="footer">
+        <button id="btn-enviar" onclick="enviarAlBot()">Confirmar Pedido</button>
+    </div>
+
+    <script>
+        // Inicializamos la WebApp de Telegram
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // Fuerza a abrirse en tamaño completo de inmediato
+
+        // Leemos si el bot nos ha pedido domicilio ('d') o recoger ('r') desde la URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const metodo = urlParams.get('metodo');
+
+        // Si es a domicilio, hacemos visible el campo de dirección
+        if (metodo === 'd') {
+            document.getElementById('grupo-direccion').style.display = 'block';
+        }
+
+        function enviarAlBot() {
+            const nombre = document.getElementById('nombre').value.trim();
+            const telefono = document.getElementById('telefono').value.trim();
+            const direccion = document.getElementById('direccion').value.trim();
+
+            // Validaciones básicas antes de enviar
+            if (!nombre || !telefono) {
+                tg.showAlert("Por favor, rellena tu nombre y número de contacto.");
+                return;
+            }
+
+            if (metodo === 'd' && !direccion) {
+                tg.showAlert("La dirección es obligatoria para envíos a domicilio.");
+                return;
+            }
+
+            // Estructuramos el objeto final
+            const datosFinales = {
+                nombre: nombre,
+                tel: telefono,
+                dir: metodo === 'd' ? direccion : 'Recogida en local'
+            };
+
+            // Mandamos los datos limpios al Trigger de n8n a través del propio chat de Telegram
+            tg.sendData(JSON.stringify(datosFinales));
+            
+            // Cerramos la vista de la WebApp
+            tg.close();
+        }
+    </script>
+</body>
+</html>
