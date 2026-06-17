@@ -107,83 +107,102 @@
         <p>Completa la información para procesar el pedido</p>
     </div>
 
-    <div class="form-group">
-        <label for="nombre">Nombre para el pedido:</label>
-        <input type="text" id="nombre" placeholder="Ej: Dani" autocomplete="off" required>
-    </div>
+    <form id="miFormulario" onsubmit="event.preventDefault(); enviarAlBot();">
+        <div class="form-group">
+            <label for="nombre">Nombre para el pedido:</label>
+            <input type="text" id="nombre" placeholder="Ej: Dani" autocomplete="off" required>
+        </div>
 
-    <div class="form-group">
-        <label for="telefono">Teléfono móvil:</label>
-        <input type="tel" id="telefono" placeholder="Ej: 612345678" autocomplete="off" required>
-    </div>
+        <div class="form-group">
+            <label for="telefono">Teléfono móvil:</label>
+            <input type="tel" id="telefono" placeholder="Ej: 612345678" autocomplete="off" required>
+        </div>
 
-    <div class="form-group" id="grupo-direccion" style="display: none;">
-        <label for="direccion">Dirección completa de entrega:</label>
-        <input type="text" id="direccion" placeholder="Calle, número, piso, puerta..." autocomplete="off">
-    </div>
+        <div class="form-group" id="grupo-direccion" style="display: none;">
+            <label for="direccion">Dirección completa de entrega:</label>
+            <input type="text" id="direccion" placeholder="Calle, número, piso, puerta..." autocomplete="off">
+        </div>
 
-    <div class="footer">
-        <button id="btn-enviar" onclick="enviarAlBot()">Confirmar Pedido</button>
-    </div>
+        <div class="footer">
+            <button type="submit" id="btn-enviar">Confirmar Pedido</button>
+        </div>
+    </form>
 
-<script>
-    const tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
 
-    // Capturamos el ChatID del usuario de forma nativa desde Telegram
-    const userContext = tg.initDataUnsafe;
-    const chatId = userContext?.user?.id || "402078740"; // Tu ID por defecto por seguridad
+        // Recuperamos el Query ID único necesario para responder a botones inline
+        const queryId = tg.initDataUnsafe.query_id;
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const metodo = urlParams.get('metodo');
+        // Leemos las variables pasadas de forma segura por la URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const metodo = urlParams.get('metodo');
+        const tokenDinamico = urlParams.get('t'); // <- Capturamos el token de forma camuflada y temporal
 
-    if (metodo === 'd') {
-        document.getElementById('grupo-direccion').style.display = 'block';
-    }
-
-    function enviarAlBot() {
-        const nombre = document.getElementById('nombre').value.trim();
-        const telephone = document.getElementById('telefono').value.trim();
-        const direccion = document.getElementById('direccion').value.trim();
-
-        if (!nombre || !telephone) {
-            tg.showAlert("Por favor, rellena tu nombre y número de contacto.");
-            return;
+        // Si es a domicilio, mostramos el input de dirección
+        if (metodo === 'd') {
+            document.getElementById('grupo-direccion').style.display = 'block';
         }
 
-        if (metodo === 'd' && !direccion) {
-            tg.showAlert("La dirección es obligatoria para envíos a domicilio.");
-            return;
+        function enviarAlBot() {
+            const nombre = document.getElementById('nombre').value.trim();
+            const telefono = document.getElementById('telefono').value.trim();
+            const direccion = document.getElementById('direccion').value.trim();
+
+            if (!nombre || !telefono) {
+                tg.showAlert("Por favor, rellena tu nombre y número de contacto.");
+                return;
+            }
+
+            if (metodo === 'd' && !direccion) {
+                tg.showAlert("La dirección es obligatoria para envíos a domicilio.");
+                return;
+            }
+
+            const destino = metodo === 'd' ? direccion.substring(0, 40) : 'r';
+            // Formato de acción definitivo: snd||Nombre-Telefono||Destino
+            const stringAccion = `snd||${nombre.replace(/\|\|/g, "").replace(/-/g, " ")}-${telefono.replace(/\|\|/g, "")}||${destino.replace(/\|\|/g, "")}`;
+
+            // Si por algún motivo no viene el token en la URL, usamos una alerta de aviso
+            if (!tokenDinamico) {
+                tg.showAlert("Error de seguridad: Falta clave de sesión del bot.");
+                return;
+            }
+
+            // Estructura oficial para inyectar el texto directamente al chat del bot
+            const respuestaTelegram = {
+                web_app_query_id: queryId,
+                result: {
+                    type: "article",
+                    id: "pedido_" + Date.now(),
+                    title: "Pedido Don Fabio",
+                    input_message_content: {
+                        message_text: stringAccion
+                    }
+                }
+            };
+
+            // Enviamos los datos directamente a la API de Telegram usando el token dinámico de la URL
+            fetch(`https://api.telegram.org/bot${tokenDinamico}/answerWebAppQuery`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(respuestaTelegram)
+            })
+            .then(response => response.json())
+            .then(res => {
+                if (res.ok) {
+                    tg.close();
+                } else {
+                    tg.showAlert("Error con Telegram: " + res.description);
+                }
+            })
+            .catch((error) => {
+                tg.showAlert("Error al procesar el envío del formulario.");
+                console.error(error);
+            });
         }
-
-        // Creamos la estructura exacta que tu n8n necesita recibir
-        const datosPedido = {
-            chatId: chatId.toString(),
-            action: `snd||${nombre.replace(/-/g, " ")}-${telephone}||${metodo === 'd' ? direccion.substring(0,40) : 'r'}`
-        };
-
-        // URL de producción o test de tu webhook de n8n (el nodo inicial de Telegram Trigger o Webhook)
-        // NOTA: Usa la URL del Webhook de n8n donde procesas los mensajes
-        const URL_N8N_WEBHOOK = "https://tu-servidor-n8n.com/webhook/tu-id-de-trigger"; 
-
-        // Enviamos los datos directamente a n8n por HTTP POST
-        fetch(URL_N8N_WEBHOOK, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(datosPedido)
-        })
-        .then(() => {
-            // Una vez que n8n ha recibido los datos, cerramos la ventana
-            tg.close();
-        })
-        .catch((error) => {
-            tg.showAlert("Error al conectar con el servidor. Inténtalo de nuevo.");
-            console.error(error);
-        });
-    }
-</script>
+    </script>
 </body>
 </html>
