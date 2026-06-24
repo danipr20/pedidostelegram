@@ -56,7 +56,7 @@
             opacity: 0.9;
         }
 
-        input {
+        input, textarea {
             width: 100%;
             padding: 12px;
             font-size: 16px;
@@ -67,19 +67,25 @@
             box-sizing: border-box;
             outline: none;
             transition: border-color 0.2s;
+            font-family: inherit;
         }
 
-        input:focus {
+        input:focus, textarea:focus {
             border-color: var(--button-bg);
         }
 
-        input::placeholder {
+        input::placeholder, textarea::placeholder {
             color: var(--hint-color);
             opacity: 0.6;
         }
 
+        textarea {
+            resize: none;
+            height: 80px;
+        }
+
         .footer {
-            margin-top: 32px;
+            margin-top: 24px;
         }
 
         button {
@@ -98,6 +104,28 @@
         button:active {
             opacity: 0.85;
         }
+
+        /* ── RGPD ── */
+        .rgpd {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 10px;
+            background-color: var(--input-bg);
+            font-size: 11px;
+            color: var(--hint-color);
+            line-height: 1.5;
+        }
+
+        .rgpd summary {
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--hint-color);
+        }
+
+        .rgpd p {
+            margin: 8px 0 0 0;
+        }
     </style>
 </head>
 <body>
@@ -107,7 +135,7 @@
         <p>Completa la información para procesar el pedido</p>
     </div>
 
-    <form id="miFormulario" onsubmit="event.preventDefault(); enviarAlBot();">
+    <div id="miFormulario">
         <div class="form-group">
             <label for="nombre">Nombre para el pedido:</label>
             <input type="text" id="nombre" placeholder="Ej: Dani" autocomplete="off" required>
@@ -123,10 +151,34 @@
             <input type="text" id="direccion" placeholder="Calle, número, piso, puerta..." autocomplete="off">
         </div>
 
-        <div class="footer">
-            <button type="submit" id="btn-enviar">Confirmar Pedido</button>
+        <!-- ── MODIFICACIÓN 2: campo comentarios ── -->
+        <div class="form-group">
+            <label for="comentarios">Comentarios o modificaciones del pedido <span style="opacity:0.5">(opcional)</span>:</label>
+            <textarea id="comentarios" placeholder="Ej: sin cebolla en la hamburguesa, alergia al gluten, dejar en portería..."></textarea>
         </div>
-    </form>
+
+        <div class="footer">
+            <button id="btn-enviar" onclick="enviarAlBot()">Confirmar Pedido</button>
+        </div>
+
+        <!-- ── MODIFICACIÓN 3: aviso RGPD ── -->
+        <details class="rgpd">
+            <summary>🔒 Privacidad y protección de datos</summary>
+            <p>
+                Los datos que introduces en este formulario (nombre, teléfono y dirección) se utilizan
+                <strong>exclusivamente</strong> para gestionar y entregar tu pedido.
+            </p>
+            <p>
+                No se almacenan en ninguna base de datos permanente. Permanecen en el sistema
+                el tiempo mínimo necesario para procesar el pedido y garantizar su trazabilidad,
+                con un máximo de <strong>1 hora</strong>, tras lo cual se eliminan automáticamente.
+            </p>
+            <p>
+                Tus datos <strong>no serán cedidos a terceros</strong> ni utilizados para
+                comunicaciones comerciales, publicidad o spam de ningún tipo.
+            </p>
+        </details>
+    </div>
 
 <script>
         const tg = window.Telegram.WebApp;
@@ -135,20 +187,20 @@
 
         const queryId = tg.initDataUnsafe.query_id;
 
-        // Leemos las variables pasadas por la URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const metodo = urlParams.get('metodo');
-        const tokenDinamico = urlParams.get('t'); 
-        const productosTraidos = urlParams.get('c') || "Vacio"; // <- Capturamos la cesta original de Telegram
+        const urlParams      = new URLSearchParams(window.location.search);
+        const metodo         = urlParams.get('metodo');
+        const tokenDinamico  = urlParams.get('t');
+        const productosTraidos = urlParams.get('c') || "Vacio";
 
         if (metodo === 'd') {
             document.getElementById('grupo-direccion').style.display = 'block';
         }
 
         function enviarAlBot() {
-            const nombre = document.getElementById('nombre').value.trim();
-            const telefono = document.getElementById('telefono').value.trim();
-            const direccion = document.getElementById('direccion').value.trim();
+            const nombre      = document.getElementById('nombre').value.trim();
+            const telefono    = document.getElementById('telefono').value.trim();
+            const direccion   = document.getElementById('direccion').value.trim();
+            const comentarios = document.getElementById('comentarios').value.trim();
 
             if (!nombre || !telefono) {
                 tg.showAlert("Por favor, rellena tu nombre y número de contacto.");
@@ -160,17 +212,23 @@
                 return;
             }
 
-            const destino = metodo === 'd' ? direccion.substring(0, 40) : 'r';
-            
-            // 🌟 FORMATEO MAESTRO: Juntamos Nombre-Telefono-Productos limpios en un solo bloque separado por guiones
-            const nombreClean = nombre.replace(/\|\|/g, "").replace(/-/g, " ");
-            const telClean = telefono.replace(/\|\|/g, "").replace(/-/g, " ");
-            const stringAccion = `snd||${nombreClean}-${telClean}-${productosTraidos}||${destino.replace(/\|\|/g, "")}`;
-
             if (!tokenDinamico) {
                 tg.showAlert("Error de seguridad: Falta clave de sesión del bot.");
                 return;
             }
+
+            // Limpiar separadores internos
+            const nombreClean     = nombre.replace(/\|\|/g, "").replace(/-/g, " ");
+            const telClean        = telefono.replace(/\|\|/g, "").replace(/-/g, " ");
+            const comentariosClean = comentarios.replace(/\|\|/g, "").replace(/\n/g, " ").substring(0, 80);
+
+            // destino = dirección (domicilio) o 'r' (recogida)
+            const destino = metodo === 'd'
+                ? direccion.replace(/\|\|/g, "").substring(0, 60)
+                : 'r';
+
+            // Formato: snd||Nombre-Telefono||destino||comentarios
+            const stringAccion = `snd||${nombreClean}-${telClean}||${destino}||${comentariosClean}`;
 
             const respuestaTelegram = {
                 web_app_query_id: queryId,
@@ -189,7 +247,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(respuestaTelegram)
             })
-            .then(response => response.json())
+            .then(r => r.json())
             .then(res => {
                 if (res.ok) {
                     tg.close();
@@ -197,9 +255,8 @@
                     tg.showAlert("Error con Telegram: " + res.description);
                 }
             })
-            .catch((error) => {
+            .catch(() => {
                 tg.showAlert("Error al procesar el envío del formulario.");
-                console.error(error);
             });
         }
     </script>
