@@ -56,7 +56,7 @@
             opacity: 0.9;
         }
 
-        input, textarea {
+        input {
             width: 100%;
             padding: 12px;
             font-size: 16px;
@@ -70,18 +70,13 @@
             font-family: inherit;
         }
 
-        input:focus, textarea:focus {
+        input:focus {
             border-color: var(--button-bg);
         }
 
-        input::placeholder, textarea::placeholder {
+        input::placeholder {
             color: var(--hint-color);
             opacity: 0.6;
-        }
-
-        textarea {
-            resize: none;
-            height: 80px;
         }
 
         .footer {
@@ -107,13 +102,13 @@
 
         /* ── RGPD ── */
         .rgpd {
-            margin-top: 20px;
+            margin-top: 16px;
             padding: 12px;
             border-radius: 10px;
             background-color: var(--input-bg);
             font-size: 11px;
             color: var(--hint-color);
-            line-height: 1.5;
+            line-height: 1.6;
         }
 
         .rgpd summary {
@@ -121,10 +116,30 @@
             cursor: pointer;
             font-size: 12px;
             color: var(--hint-color);
+            list-style: none;
+        }
+
+        .rgpd summary::-webkit-details-marker { display: none; }
+
+        .rgpd-inline {
+            margin-top: 12px;
+            font-size: 11px;
+            color: var(--hint-color);
+            line-height: 1.5;
+            text-align: center;
+        }
+
+        .rgpd h4 {
+            margin: 12px 0 4px 0;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--hint-color);
         }
 
         .rgpd p {
-            margin: 8px 0 0 0;
+            margin: 4px 0;
         }
     </style>
 </head>
@@ -151,114 +166,120 @@
             <input type="text" id="direccion" placeholder="Calle, número, piso, puerta..." autocomplete="off">
         </div>
 
-        <!-- ── MODIFICACIÓN 2: campo comentarios ── -->
-        <div class="form-group">
-            <label for="comentarios">Comentarios o modificaciones del pedido <span style="opacity:0.5">(opcional)</span>:</label>
-            <textarea id="comentarios" placeholder="Ej: sin cebolla en la hamburguesa, alergia al gluten, dejar en portería..."></textarea>
-        </div>
-
         <div class="footer">
             <button id="btn-enviar" onclick="enviarAlBot()">Confirmar Pedido</button>
         </div>
 
-        <!-- ── MODIFICACIÓN 3: aviso RGPD ── -->
+        <p class="rgpd-inline">
+            🔒 Al confirmar, aceptas que tus datos se usen únicamente para gestionar este pedido y se eliminen al finalizarlo.
+        </p>
+
         <details class="rgpd">
-            <summary>🔒 Privacidad y protección de datos</summary>
-            <p>
-                Los datos que introduces en este formulario (nombre, teléfono y dirección) se utilizan
-                <strong>exclusivamente</strong> para gestionar y entregar tu pedido.
-            </p>
-            <p>
-                No se almacenan en ninguna base de datos permanente. Permanecen en el sistema
-                el tiempo mínimo necesario para procesar el pedido y garantizar su trazabilidad,
-                con un máximo de <strong>1 hora</strong>, tras lo cual se eliminan automáticamente.
-            </p>
-            <p>
-                Tus datos <strong>no serán cedidos a terceros</strong> ni utilizados para
-                comunicaciones comerciales, publicidad o spam de ningún tipo.
-            </p>
+            <summary>📄 Política de privacidad y protección de datos ▾</summary>
+
+            <h4>Responsable del tratamiento</h4>
+            <p><strong id="txt-nombre-local"></strong> · Contacto: <span id="txt-email-local"></span></p>
+
+            <h4>¿Qué datos recogemos?</h4>
+            <p>Nombre, teléfono y, en pedidos a domicilio, dirección de entrega.</p>
+
+            <h4>¿Para qué los usamos?</h4>
+            <p>Exclusivamente para gestionar y entregar tu pedido. No se usarán para publicidad, spam ni ningún otro fin.</p>
+
+            <h4>¿Cuánto tiempo los guardamos?</h4>
+            <p>El tiempo mínimo necesario para completar el pedido (máximo 1 hora). Se eliminan automáticamente una vez procesado.</p>
+
+            <h4>Base legal</h4>
+            <p>Ejecución de contrato (Art. 6.1.b RGPD). No necesitas dar consentimiento adicional: los datos son imprescindibles para entregarte el pedido.</p>
+
+            <h4>¿Cedemos datos a terceros?</h4>
+            <p>No. Telegram actúa como canal de comunicación y tiene su propia política de privacidad. No cedemos datos a ningún tercero con fines comerciales.</p>
+
+            <h4>Tus derechos</h4>
+            <p>Puedes ejercer tus derechos de acceso, rectificación, supresión, oposición y portabilidad escribiendo a <span id="txt-email-legal"></span>. También puedes reclamar ante la <strong>AEPD</strong> (aepd.es).</p>
         </details>
     </div>
 
 <script>
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
+    // ── Variables del restaurante (cambiar por cliente) ──
+    const NOMBRE_LOCAL = "Don Fabio";
+    const EMAIL_LOCAL  = "info@donfabio.es";
 
-        const queryId = tg.initDataUnsafe.query_id;
+    document.getElementById('txt-nombre-local').textContent = NOMBRE_LOCAL;
+    document.getElementById('txt-email-local').textContent  = EMAIL_LOCAL;
+    document.getElementById('txt-email-legal').textContent  = EMAIL_LOCAL;
 
-        const urlParams      = new URLSearchParams(window.location.search);
-        const metodo         = urlParams.get('metodo');
-        const tokenDinamico  = urlParams.get('t');
-        const productosTraidos = urlParams.get('c') || "Vacio";
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
 
-        if (metodo === 'd') {
-            document.getElementById('grupo-direccion').style.display = 'block';
+    const queryId = tg.initDataUnsafe.query_id;
+
+    const urlParams     = new URLSearchParams(window.location.search);
+    const metodo        = urlParams.get('metodo');
+    const tokenDinamico = urlParams.get('t');
+
+    if (metodo === 'd') {
+        document.getElementById('grupo-direccion').style.display = 'block';
+    }
+
+    function enviarAlBot() {
+        const nombre    = document.getElementById('nombre').value.trim();
+        const telefono  = document.getElementById('telefono').value.trim();
+        const direccion = document.getElementById('direccion').value.trim();
+
+        if (!nombre || !telefono) {
+            tg.showAlert("Por favor, rellena tu nombre y número de contacto.");
+            return;
         }
 
-        function enviarAlBot() {
-            const nombre      = document.getElementById('nombre').value.trim();
-            const telefono    = document.getElementById('telefono').value.trim();
-            const direccion   = document.getElementById('direccion').value.trim();
-            const comentarios = document.getElementById('comentarios').value.trim();
-
-            if (!nombre || !telefono) {
-                tg.showAlert("Por favor, rellena tu nombre y número de contacto.");
-                return;
-            }
-
-            if (metodo === 'd' && !direccion) {
-                tg.showAlert("La dirección es obligatoria para envíos a domicilio.");
-                return;
-            }
-
-            if (!tokenDinamico) {
-                tg.showAlert("Error de seguridad: Falta clave de sesión del bot.");
-                return;
-            }
-
-            // Limpiar separadores internos
-            const nombreClean     = nombre.replace(/\|\|/g, "").replace(/-/g, " ");
-            const telClean        = telefono.replace(/\|\|/g, "").replace(/-/g, " ");
-            const comentariosClean = comentarios.replace(/\|\|/g, "").replace(/\n/g, " ").substring(0, 80);
-
-            // destino = dirección (domicilio) o 'r' (recogida)
-            const destino = metodo === 'd'
-                ? direccion.replace(/\|\|/g, "").substring(0, 60)
-                : 'r';
-
-            // Formato: snd||Nombre-Telefono||destino||comentarios
-            const stringAccion = `snd||${nombreClean}-${telClean}||${destino}||${comentariosClean}`;
-
-            const respuestaTelegram = {
-                web_app_query_id: queryId,
-                result: {
-                    type: "article",
-                    id: "pedido_" + Date.now(),
-                    title: "Pedido Don Fabio",
-                    input_message_content: {
-                        message_text: stringAccion
-                    }
-                }
-            };
-
-            fetch(`https://api.telegram.org/bot${tokenDinamico}/answerWebAppQuery`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(respuestaTelegram)
-            })
-            .then(r => r.json())
-            .then(res => {
-                if (res.ok) {
-                    tg.close();
-                } else {
-                    tg.showAlert("Error con Telegram: " + res.description);
-                }
-            })
-            .catch(() => {
-                tg.showAlert("Error al procesar el envío del formulario.");
-            });
+        if (metodo === 'd' && !direccion) {
+            tg.showAlert("La dirección es obligatoria para envíos a domicilio.");
+            return;
         }
-    </script>
+
+        if (!tokenDinamico) {
+            tg.showAlert("Error de seguridad: falta la clave de sesión del bot.");
+            return;
+        }
+
+        const nombreClean = nombre.replace(/\|\|/g, "").replace(/-/g, " ");
+        const telClean    = telefono.replace(/\|\|/g, "").replace(/-/g, " ");
+        const destino     = metodo === 'd'
+            ? direccion.replace(/\|\|/g, "").substring(0, 60)
+            : 'r';
+
+        const stringAccion = `snd||${nombreClean}-${telClean}||${destino}`;
+
+        const respuestaTelegram = {
+            web_app_query_id: queryId,
+            result: {
+                type: "article",
+                id: "pedido_" + Date.now(),
+                title: "Pedido " + NOMBRE_LOCAL,
+                input_message_content: {
+                    message_text: stringAccion
+                }
+            }
+        };
+
+        fetch(`https://api.telegram.org/bot${tokenDinamico}/answerWebAppQuery`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(respuestaTelegram)
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.ok) {
+                tg.close();
+            } else {
+                tg.showAlert("Error con Telegram: " + res.description);
+            }
+        })
+        .catch(() => {
+            tg.showAlert("Error al procesar el envío. Inténtalo de nuevo.");
+        });
+    }
+</script>
 </body>
 </html>
