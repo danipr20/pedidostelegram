@@ -179,10 +179,10 @@
       <div id="cartLines"></div>
       <div class="total"><span>Total</span><span id="cartTotal">0,00 €</span></div>
 
-      <label class="f">Nombre completo</label>
+      <label class="f">Nombre — confírmalo o cámbialo</label>
       <input class="t" id="fNombre" placeholder="Tu nombre" autocomplete="name">
 
-      <label class="f">Teléfono</label>
+      <label class="f">Teléfono (tu WhatsApp) — confírmalo o cámbialo</label>
       <input class="t" id="fTel" type="tel" placeholder="600 000 000" autocomplete="tel">
 
       <label class="f">¿Cómo lo recibes?</label>
@@ -217,6 +217,7 @@
   // ── Config vía parámetros de URL ──
   const P = new URLSearchParams(location.search);
   const WA   = P.get('wa')  || '';                 // nº WhatsApp del cliente
+  const NAME = P.get('n')   || '';                 // nombre de perfil de WhatsApp
   const RID  = P.get('r')   || 'demo';             // id restaurante (multi-tenant)
   const API  = (P.get('api') || 'https://n8n.danipr20.com').replace(/\/$/, '');
   const MENU_URL   = `${API}/webhook/menu?r=${encodeURIComponent(RID)}&_=${Date.now()}`;
@@ -458,6 +459,10 @@
   };
 
   function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+
+  // Pre-rellenar datos del cliente desde WhatsApp (menos fricción; editables)
+  if (WA)   $('#fTel').value = '+' + WA;
+  if (NAME) $('#fNombre').value = NAME;
 
   cargar();
 })();
