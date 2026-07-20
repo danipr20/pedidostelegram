@@ -63,6 +63,7 @@
   .cat-title {
     font-size: 13px; font-weight: 700; text-transform: uppercase;
     letter-spacing: .04em; color: var(--muted); margin: 18px 6px 8px;
+    scroll-margin-top: 150px;   /* ajustado en runtime a la altura de la cabecera fija */
   }
 
   .item {
@@ -239,6 +240,7 @@
   let carta = [];
   const cart = {};            // key = índice producto → qty
   let entrega = 'pickup';
+  let stickH = 0, lastActive = -1;
 
   const $ = s => document.querySelector(s);
   const fmt = n => n.toFixed(2).replace('.', ',') + ' €';
@@ -303,7 +305,41 @@
         menu.appendChild(itemRow(p, idx));
       });
     });
+
+    stickH = setupSticky();
+    lastActive = -1;
+    updateActiveChip();
   }
+
+  // ── Offsets de la cabecera fija + scrollspy de categorías ──
+  function setupSticky() {
+    const header = document.querySelector('header');
+    const cats   = document.getElementById('cats');
+    const hH = header.offsetHeight;
+    cats.style.top = hH + 'px';                     // los chips se pegan justo bajo la cabecera
+    const stick = hH + cats.offsetHeight;
+    document.querySelectorAll('.cat-title')
+      .forEach(t => t.style.scrollMarginTop = (stick + 6) + 'px');
+    return stick;
+  }
+
+  function updateActiveChip() {
+    const titles = [...document.querySelectorAll('.cat-title')].filter(t => t.style.display !== 'none');
+    if (!titles.length) return;
+    let idx = 0;
+    for (let i = 0; i < titles.length; i++) {
+      if (titles[i].getBoundingClientRect().top <= stickH + 8) idx = i;
+    }
+    if (idx === lastActive) return;
+    lastActive = idx;
+    const chips = [...document.querySelectorAll('.chip')];
+    chips.forEach((c, i) => c.classList.toggle('active', i === idx));
+    const cats = document.getElementById('cats');
+    const chip = chips[idx];
+    if (chip) cats.scrollTo({ left: chip.offsetLeft - cats.clientWidth / 2 + chip.clientWidth / 2, behavior: 'smooth' });
+  }
+
+  window.addEventListener('scroll', () => requestAnimationFrame(updateActiveChip), { passive: true });
 
   function itemRow(p, idx) {
     const row = document.createElement('div');
