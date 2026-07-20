@@ -1,0 +1,741 @@
+{
+  "name": "Restaurante WhatsApp Bot — Web Menu",
+  "nodes": [
+    {
+      "id": "cfg-1",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -820,
+        160
+      ],
+      "notes": "Config del bot. Mantener sincronizado con 'Config PW'.",
+      "parameters": {
+        "jsCode": "// ══════════ CONFIG (rama bot WhatsApp) ══════════\nconst CFG = {\n  D360_API_KEY : '08YFTRMVRMFS5OYFDWKHST8KSED32HBP',\n  D360_BASE_URL: 'https://waba-sandbox.360dialog.io/v1',\n  NOMBRE_LOCAL : 'DEMO restaurante X',\n  MQTT_TOPIC   : 'COCINA_DEMO',\n  ADMIN_WA     : '34633437578',\n  RID          : 'demo',   // id restaurante (multi-tenant futuro)\n  // URL de la carta web (GitHub Pages). Ojo mayúsculas/minúsculas.\n  WEB_MENU_URL : 'https://danipr20.github.io/pedidostelegram/Web/Whatsapp/Carta/',\n};\nreturn { ...$json, __cfg: CFG };\n"
+      }
+    },
+    {
+      "id": "wh-1",
+      "name": "WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1040,
+        160
+      ],
+      "parameters": {
+        "path": "whatsapp-360",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "responseCode": 200,
+        "options": {}
+      }
+    },
+    {
+      "id": "parse-1",
+      "name": "Parse WA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        160
+      ],
+      "parameters": {
+        "jsCode": "// Entrante 360dialog (Cloud API anidado o WABA v1 plano)\nconst body = $json.body || $json;\nconst val  = body?.entry?.[0]?.changes?.[0]?.value || body;\nconst messages = val?.messages;\nif (!messages?.length) return { hasMessage: false };\n\nconst msg     = messages[0];\nconst contact = val?.contacts?.[0];\nconst waId       = msg.from;\nconst clientName = contact?.profile?.name || '';\n\nlet action = 'start';\nif (msg.type === 'interactive') {\n  const it = msg.interactive;\n  if (it.type === 'button_reply')    action = it.button_reply.id;   // ok||.. / rj||..\n  else if (it.type === 'list_reply') action = it.list_reply.id;\n} // cualquier texto → 'start' (le mandamos la carta)\n\nreturn { hasMessage: true, waId, clientName, action };\n"
+      }
+    },
+    {
+      "id": "if-msg",
+      "name": "IF Has Message",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -380,
+        160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "hm",
+              "leftValue": "={{ $json.hasMessage }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "router-1",
+      "name": "Router WA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        160
+      ],
+      "parameters": {
+        "jsCode": "const CFG = $('Config').first().json.__cfg;\nconst sd  = $getWorkflowStaticData('global');\nif (!sd.pedidos) sd.pedidos = {};\n\nconst action     = $json.action || 'start';\nconst waId       = $json.waId;\nconst clientName = $json.clientName || '';\nconst isAdmin    = waId === CFG.ADMIN_WA;\nconst parts = action.split('||');\nconst cmd   = parts[0];\n\nfunction textMsg(to, body) {\n  return { waPayload: { messaging_product:'whatsapp', to, type:'text', text:{ body, preview_url:false } },\n           mqttTopic:null, mqttPayload:null, clientWa:null, clientNotify:null, adminWa:null, adminNotify:null };\n}\n\n// ── ADMIN acepta → imprime ──\nif (isAdmin && cmd === 'ok') {\n  const pid = parts[2];\n  const pedido = sd.pedidos[pid];\n  if (!pedido) return textMsg(CFG.ADMIN_WA, '⚠️ Pedido no encontrado o ya procesado.');\n  delete sd.pedidos[pid];\n  const { clienteWa, nombre, telefono, direccion, esEntrega, items, notas } = pedido;\n  const SEP='================================', sub='--------------------------------';\n  const entrega = esEntrega ? `Domicilio: ${direccion}` : 'Recogida en local';\n  const linDir  = esEntrega ? `\\nDIRECCION: ${direccion}` : '';\n  const prod    = items.map(i => `  ${i.qty}x ${i.nom}`).join('\\n');\n  const linNotas= notas ? `\\n${sub}\\nNOTAS: ${notas}` : '';\n  const _dig = s => String(s||'').replace(/\\D/g,'');\n  const _telTicket = (!telefono || _dig(telefono) === _dig(clienteWa)) ? `TELEFONO: +${clienteWa}` : `WHATSAPP: +${clienteWa}\\nTELEFONO: ${telefono}`;\n  const mqttPayload = `${SEP}\\n#${CFG.NOMBRE_LOCAL}\\n${SEP}\\nENTREGA : ${entrega}${linDir}\\nCLIENTE : ${nombre}\\n${_telTicket}\\n${sub}\\n#PRODUCTOS:\\n${prod}${linNotas}\\n${SEP}`;\n  const tiempo = esEntrega ? '🚗 Tiempo estimado: 35-45 min.' : '⏰ Listo en aprox. 15-20 min.';\n  return {\n    waPayload: { messaging_product:'whatsapp', to: clienteWa, type:'text',\n      text:{ body:`👨‍🍳 *¡Tu pedido está confirmado!*\\n\\n${tiempo}\\n\\n¡Gracias por tu confianza! 🙌`, preview_url:false } },\n    mqttTopic: CFG.MQTT_TOPIC, mqttPayload,\n    clientWa:null, clientNotify:null,\n    adminWa: CFG.ADMIN_WA, adminNotify:`✅ Pedido #${pid} aceptado e impreso.`\n  };\n}\n\n// ── ADMIN deniega ──\nif (isAdmin && cmd === 'rj') {\n  const pid = parts[2];\n  const pedido = sd.pedidos[pid];\n  const clienteWa = pedido?.clienteWa || parts[1];\n  if (pedido) delete sd.pedidos[pid];\n  return {\n    waPayload: { messaging_product:'whatsapp', to: clienteWa, type:'text',\n      text:{ body:`⚠️ *Pedido cancelado.*\\n\\nEl restaurante no ha podido aceptarlo ahora mismo. Inténtalo de nuevo, por favor.`, preview_url:false } },\n    mqttTopic:null, mqttPayload:null, clientWa:null, clientNotify:null,\n    adminWa: CFG.ADMIN_WA, adminNotify:`❌ Pedido #${pid} denegado.`\n  };\n}\n\n// ── CLIENTE: enviar enlace a la carta web ──\nconst url = `${CFG.WEB_MENU_URL}?wa=${encodeURIComponent(waId)}&r=${encodeURIComponent(CFG.RID)}&n=${encodeURIComponent(clientName)}`;\nreturn {\n  waPayload: {\n    messaging_product:'whatsapp', to: waId, type:'interactive',\n    interactive: {\n      type:'cta_url',\n      body:{ text:`¡Hola${clientName?` ${clientName}`:''}! 👋 Bienvenido a *${CFG.NOMBRE_LOCAL}*.\\n\\nPulsa el botón para ver la carta y hacer tu pedido 👇` },\n      action:{ name:'cta_url', parameters:{ display_text:'🍽️ Ver carta y pedir', url } }\n    }\n  },\n  mqttTopic:null, mqttPayload:null, clientWa:null, clientNotify:null, adminWa:null, adminNotify:null\n};\n"
+      }
+    },
+    {
+      "id": "send-main",
+      "name": "Send Main WA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        120,
+        40
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.__cfg.D360_BASE_URL }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "D360-API-KEY",
+              "value": "={{ $('Config').first().json.__cfg.D360_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.waPayload }}",
+        "options": {
+          "retry": {
+            "enabled": true,
+            "maxTries": 3,
+            "waitBetweenTries": 1000
+          }
+        }
+      }
+    },
+    {
+      "id": "if-mqtt",
+      "name": "IF MQTT",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        120,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "mq",
+              "leftValue": "={{ $json.mqttTopic }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "mqtt-pub",
+      "name": "MQTT Publish",
+      "type": "n8n-nodes-base.mqtt",
+      "typeVersion": 1,
+      "position": [
+        360,
+        200
+      ],
+      "parameters": {
+        "topic": "={{ $json.mqttTopic }}",
+        "sendInputData": false,
+        "message": "={{ $json.mqttPayload }}",
+        "options": {}
+      },
+      "credentials": {
+        "mqtt": {
+          "id": "UsQN9rpLFBiOEKwK",
+          "name": "MQTT Servidor Chuwi"
+        }
+      }
+    },
+    {
+      "id": "if-cnotify",
+      "name": "IF Client Notify",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        120,
+        360
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cn",
+              "leftValue": "={{ $json.clientNotify }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "send-cnotify",
+      "name": "Send Client Notify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        360,
+        360
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.__cfg.D360_BASE_URL }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "D360-API-KEY",
+              "value": "={{ $('Config').first().json.__cfg.D360_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { messaging_product:'whatsapp', to: $json.clientWa, type:'text', text:{ body: $json.clientNotify } } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "if-anotify",
+      "name": "IF Admin Notify",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        120,
+        520
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "an",
+              "leftValue": "={{ $json.adminNotify }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "send-anotify",
+      "name": "Send Admin Notify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        360,
+        520
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.__cfg.D360_BASE_URL }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "D360-API-KEY",
+              "value": "={{ $('Config').first().json.__cfg.D360_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { messaging_product:'whatsapp', to: $json.adminWa, type:'text', text:{ body: $json.adminNotify } } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "wh-menu",
+      "name": "Menu Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -820,
+        640
+      ],
+      "notes": "GET público que la web usa para cargar la carta. CORS permitido a GitHub Pages.",
+      "parameters": {
+        "path": "menu",
+        "httpMethod": "GET",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://danipr20.github.io"
+        }
+      }
+    },
+    {
+      "id": "menu-sheet",
+      "name": "Get Carta",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        -560,
+        640
+      ],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Egh3_6F8o16olOz78CpEIlGLfWcm2l8bFdhU1pGwGf4",
+          "mode": "list",
+          "cachedResultName": "Carta dinámica"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "carta",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "v0do22FyxqWga80A",
+          "name": "Google Sheets bot"
+        }
+      }
+    },
+    {
+      "id": "menu-fmt",
+      "name": "Format Carta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        640
+      ],
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst carta = rows.map(item => {\n  const o = {};\n  for (const k in item) {\n    const kl = k.toLowerCase();\n    if (kl === 'cat' || kl.includes('categor'))                              o.cat  = String(item[k]).trim();\n    else if (kl === 'nom' || kl.includes('product') || kl.includes('nombre')) o.nom  = String(item[k]).trim();\n    else if (kl === 'prec' || kl.includes('precio'))                         o.prec = parseFloat(String(item[k]).replace(',', '.')) || 0;\n    else if (kl === 'desc' || kl.includes('descrip'))                        o.desc = String(item[k]).trim();\n  }\n  return o;\n}).filter(p => p.cat && p.nom);\nreturn carta.map(c => ({ json: c }));\n"
+      }
+    },
+    {
+      "id": "menu-resp",
+      "name": "Respond Menu",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        640
+      ],
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "https://danipr20.github.io"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "wh-pedido",
+      "name": "Pedido Web Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -820,
+        900
+      ],
+      "notes": "POST desde la web con el pedido completo. CORS permitido a GitHub Pages.",
+      "parameters": {
+        "path": "pedido-web",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "https://danipr20.github.io"
+        }
+      }
+    },
+    {
+      "id": "cfg-2",
+      "name": "Config PW",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -580,
+        900
+      ],
+      "notes": "Config de la rama pedido-web. Mantener sincronizado con 'Config'.",
+      "parameters": {
+        "jsCode": "// ══════════ CONFIG (rama pedido-web) ══════════\nconst CFG = {\n  D360_API_KEY : '08YFTRMVRMFS5OYFDWKHST8KSED32HBP',\n  D360_BASE_URL: 'https://waba-sandbox.360dialog.io/v1',\n  NOMBRE_LOCAL : 'DEMO restaurante X',\n  ADMIN_WA     : '34633437578',\n};\nreturn { ...$json, __cfg: CFG };\n"
+      }
+    },
+    {
+      "id": "pedido-proc",
+      "name": "Procesar Pedido Web",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -340,
+        900
+      ],
+      "parameters": {
+        "jsCode": "const CFG  = $json.__cfg;\nconst body = $json.body || {};\nconst sd   = $getWorkflowStaticData('global');\nif (!sd.pedidos) sd.pedidos = {};\n\nconst wa      = String(body.wa || '');\nconst cliente = body.cliente || {};\nconst items   = Array.isArray(body.items) ? body.items : [];\nconst esEntrega = body.entrega === 'delivery';\nconst notas   = body.notas || '';\nconst total   = Number(body.total) || items.reduce((s,i) => s + (i.prec*i.qty), 0);\n\nif (!wa || !items.length) {\n  return { error: true, respBody: { ok:false, error:'Pedido inválido' } };\n}\n\nconst pid = Date.now().toString().slice(-6);\nsd.pedidos[pid] = {\n  clienteWa: wa, nombre: cliente.nombre || 'Cliente', telefono: cliente.tel || wa,\n  direccion: cliente.dir || '', esEntrega, items, notas, total\n};\n\nconst lineas  = items.map(i => `  • ${i.qty}x ${i.nom}`).join('\\n');\nconst entrega = esEntrega ? `🛵 Domicilio: ${cliente.dir || ''}` : '🏃 Recogida en local';\nconst tot     = total.toFixed(2).replace('.', ',');\nconst _dig = s => String(s||'').replace(/\\D/g,'');\nconst _waF = wa ? '+'+wa : '';\nconst _telIn = cliente.tel || '';\nconst _telAdmin = (!_telIn || _dig(_telIn) === _dig(wa)) ? `📱 WhatsApp: ${_waF}` : `📱 Envía desde: ${_waF}\\n📞 Contacto: ${_telIn}`;\nconst bodyAdmin =\n  `🚨 *NUEVO PEDIDO #${pid}*\\n\\n` +\n  `👤 ${cliente.nombre || 'Cliente'}\\n${_telAdmin}\\n${entrega}\\n` +\n  (notas ? `📝 ${notas}\\n` : '') +\n  `\\n🛒 *Productos:*\\n${lineas}\\n\\n💰 *Total: ${tot} €*`;\n\nconst adminPayload = {\n  messaging_product:'whatsapp', to: CFG.ADMIN_WA, type:'interactive',\n  interactive:{\n    type:'button',\n    body:{ text: bodyAdmin.substring(0, 1024) },\n    action:{ buttons:[\n      { type:'reply', reply:{ id:`ok||${wa}||${pid}`, title:'✅ Aceptar' } },\n      { type:'reply', reply:{ id:`rj||${wa}||${pid}`, title:'❌ Denegar' } },\n    ]}\n  }\n};\n\nreturn {\n  waPayload: adminPayload,\n  clientWa: wa,\n  clientNotify: '⏳ *¡Pedido recibido!*\\n\\nEl restaurante lo está revisando. Te confirmamos en un momento por aquí. 🍳',\n  respBody: { ok:true, pedidoId: pid }\n};\n"
+      }
+    },
+    {
+      "id": "pedido-admin",
+      "name": "Send Admin Pedido",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -100,
+        820
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config PW').first().json.__cfg.D360_BASE_URL }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "D360-API-KEY",
+              "value": "={{ $('Config PW').first().json.__cfg.D360_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.waPayload }}",
+        "options": {
+          "retry": {
+            "enabled": true,
+            "maxTries": 3,
+            "waitBetweenTries": 1000
+          }
+        }
+      }
+    },
+    {
+      "id": "pedido-cli",
+      "name": "Send Client Recibido",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -100,
+        980
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config PW').first().json.__cfg.D360_BASE_URL }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "D360-API-KEY",
+              "value": "={{ $('Config PW').first().json.__cfg.D360_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { messaging_product:'whatsapp', to: $json.clientWa, type:'text', text:{ body: $json.clientNotify } } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "pedido-resp",
+      "name": "Respond Pedido",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -100,
+        1140
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "https://danipr20.github.io"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "WhatsApp Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Parse WA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse WA": {
+      "main": [
+        [
+          {
+            "node": "IF Has Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Has Message": {
+      "main": [
+        [
+          {
+            "node": "Router WA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Router WA": {
+      "main": [
+        [
+          {
+            "node": "Send Main WA",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF MQTT",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Client Notify",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF Admin Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF MQTT": {
+      "main": [
+        [
+          {
+            "node": "MQTT Publish",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "IF Client Notify": {
+      "main": [
+        [
+          {
+            "node": "Send Client Notify",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "IF Admin Notify": {
+      "main": [
+        [
+          {
+            "node": "Send Admin Notify",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Menu Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get Carta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Carta": {
+      "main": [
+        [
+          {
+            "node": "Format Carta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Carta": {
+      "main": [
+        [
+          {
+            "node": "Respond Menu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pedido Web Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config PW": {
+      "main": [
+        [
+          {
+            "node": "Procesar Pedido Web",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar Pedido Web": {
+      "main": [
+        [
+          {
+            "node": "Send Admin Pedido",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Client Recibido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Pedido": {
+      "main": [
+        [
+          {
+            "node": "Config PW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
