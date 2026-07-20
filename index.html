@@ -1,285 +1,430 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Datos de Entrega - Don Fabio</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        :root {
-            --bg-color: var(--tg-theme-bg-color, #ffffff);
-            --text-color: var(--tg-theme-text-color, #222222);
-            --hint-color: var(--tg-theme-hint-color, #888888);
-            --input-bg: var(--tg-theme-secondary-bg-color, #f4f4f7);
-            --button-bg: var(--tg-theme-button-color, #248bca);
-            --button-text: var(--tg-theme-button-text-color, #ffffff);
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Carta · Pedido</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #1a1d21;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --brand: #128c7e;      /* verde WhatsApp */
+    --brand-dark: #075e54;
+    --accent: #25d366;
+    --danger: #ef4444;
+    --shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1418; --card: #1b2127; --text: #e9edf0; --muted: #9aa4ae;
+      --line: #2a323a; --shadow: 0 1px 3px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    padding-bottom: 96px;
+  }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 16px;
-            box-sizing: border-box;
-            -webkit-user-select: none;
-            user-select: none;
-        }
+  /* Header + buscador */
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--brand-dark); color: #fff;
+    padding: 12px 16px 10px; box-shadow: var(--shadow);
+  }
+  header h1 { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+  .search {
+    width: 100%; padding: 10px 12px; border: none; border-radius: 10px;
+    font-size: 15px; background: rgba(255,255,255,.15); color: #fff;
+  }
+  .search::placeholder { color: rgba(255,255,255,.7); }
+  .search:focus { outline: 2px solid var(--accent); background: rgba(255,255,255,.22); }
 
-        .header {
-            text-align: center;
-            margin-bottom: 24px;
-        }
+  /* Chips de categorías */
+  .cats {
+    display: flex; gap: 8px; overflow-x: auto; padding: 10px 16px;
+    position: sticky; top: 64px; z-index: 15; background: var(--bg);
+    scrollbar-width: none;
+  }
+  .cats::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: 0 0 auto; padding: 6px 14px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--line); color: var(--text);
+    font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  }
+  .chip.active { background: var(--brand); color: #fff; border-color: var(--brand); }
 
-        .header h2 {
-            margin: 0 0 8px 0;
-            font-size: 20px;
-            font-weight: 600;
-        }
+  main { padding: 4px 12px 12px; }
+  .cat-title {
+    font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--muted); margin: 18px 6px 8px;
+  }
 
-        .header p {
-            margin: 0;
-            font-size: 14px;
-            color: var(--hint-color);
-        }
+  .item {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--card); border-radius: 12px; padding: 12px;
+    margin-bottom: 8px; box-shadow: var(--shadow);
+  }
+  .item-info { flex: 1; min-width: 0; }
+  .item-name { font-size: 15px; font-weight: 600; margin: 0 0 2px; }
+  .item-desc { font-size: 12px; color: var(--muted); margin: 0 0 4px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .item-price { font-size: 14px; font-weight: 700; color: var(--brand); }
 
-        .form-group {
-            margin-bottom: 16px;
-        }
+  /* Stepper cantidad */
+  .stepper { display: flex; align-items: center; gap: 4px; }
+  .stepper button {
+    width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); font-size: 20px; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    line-height: 1; padding: 0;
+  }
+  .stepper button.add { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .stepper .qty { min-width: 22px; text-align: center; font-weight: 700; font-size: 15px; }
+  .stepper .minus[hidden], .stepper .qty[hidden] { display: none; }
 
-        label {
-            display: block;
-            font-size: 13px;
-            font-weight: 500;
-            margin-bottom: 6px;
-            color: var(--text-color);
-            opacity: 0.9;
-        }
+  /* Barra inferior */
+  .bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
+    background: var(--card); border-top: 1px solid var(--line);
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    box-shadow: 0 -2px 10px rgba(0,0,0,.08);
+    transform: translateY(110%); transition: transform .22s ease;
+  }
+  .bar.show { transform: translateY(0); }
+  .cta {
+    width: 100%; border: none; border-radius: 12px; padding: 14px;
+    background: var(--brand); color: #fff; font-size: 16px; font-weight: 700;
+    cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+  }
+  .cta .count {
+    background: rgba(255,255,255,.25); border-radius: 999px;
+    padding: 2px 10px; font-size: 14px;
+  }
 
-        input {
-            width: 100%;
-            padding: 12px;
-            font-size: 16px;
-            border: 1px solid transparent;
-            border-radius: 10px;
-            background-color: var(--input-bg);
-            color: var(--text-color);
-            box-sizing: border-box;
-            outline: none;
-            transition: border-color 0.2s;
-            font-family: inherit;
-        }
+  /* Pantalla checkout */
+  .sheet {
+    position: fixed; inset: 0; z-index: 40; background: var(--bg);
+    transform: translateX(100%); transition: transform .25s ease;
+    overflow-y: auto; padding-bottom: 40px;
+  }
+  .sheet.show { transform: translateX(0); }
+  .sheet header { background: var(--brand-dark); display: flex; align-items: center; gap: 12px; }
+  .sheet header h1 { margin: 0; }
+  .back { background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; padding: 0 4px; }
+  .sec { padding: 16px; }
+  .cart-line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .cart-line .l { flex: 1; }
+  .cart-line .q { color: var(--muted); margin: 0 8px; }
+  .total { display: flex; justify-content: space-between; font-size: 18px; font-weight: 800; padding: 12px 0 4px; }
+  label.f { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin: 14px 0 6px; }
+  input.t, textarea.t {
+    width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 10px;
+    font-size: 15px; background: var(--card); color: var(--text);
+  }
+  .toggle { display: flex; gap: 8px; margin-top: 6px; }
+  .toggle button {
+    flex: 1; padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .toggle button.active { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .send {
+    width: 100%; border: none; border-radius: 12px; padding: 15px; margin-top: 20px;
+    background: var(--accent); color: #05271b; font-size: 16px; font-weight: 800; cursor: pointer;
+  }
+  .send:disabled { opacity: .5; cursor: default; }
 
-        input:focus {
-            border-color: var(--button-bg);
-        }
-
-        input::placeholder {
-            color: var(--hint-color);
-            opacity: 0.6;
-        }
-
-        .footer {
-            margin-top: 24px;
-        }
-
-        button {
-            width: 100%;
-            padding: 14px;
-            font-size: 16px;
-            font-weight: 600;
-            border: none;
-            border-radius: 10px;
-            background-color: var(--button-bg);
-            color: var(--button-text);
-            cursor: pointer;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        button:active {
-            opacity: 0.85;
-        }
-
-        /* ── RGPD ── */
-        .rgpd {
-            margin-top: 16px;
-            padding: 12px;
-            border-radius: 10px;
-            background-color: var(--input-bg);
-            font-size: 11px;
-            color: var(--hint-color);
-            line-height: 1.6;
-        }
-
-        .rgpd summary {
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 12px;
-            color: var(--hint-color);
-            list-style: none;
-        }
-
-        .rgpd summary::-webkit-details-marker { display: none; }
-
-        .rgpd-inline {
-            margin-top: 12px;
-            font-size: 11px;
-            color: var(--hint-color);
-            line-height: 1.5;
-            text-align: center;
-        }
-
-        .rgpd h4 {
-            margin: 12px 0 4px 0;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--hint-color);
-        }
-
-        .rgpd p {
-            margin: 4px 0;
-        }
-    </style>
+  .status { text-align: center; padding: 40px 20px; }
+  .status .emoji { font-size: 54px; }
+  .status h2 { margin: 12px 0 6px; }
+  .status p { color: var(--muted); }
+  .hidden { display: none !important; }
+  .loading { text-align: center; color: var(--muted); padding: 40px; }
+</style>
 </head>
 <body>
 
-    <div class="header">
-        <h2>📍 Datos de Confirmación</h2>
-        <p>Completa la información para procesar el pedido</p>
+  <header>
+    <h1 id="localName">Carta</h1>
+    <input class="search" id="search" placeholder="🔎 Buscar plato…" autocomplete="off">
+  </header>
+
+  <div class="cats" id="cats"></div>
+
+  <main id="menu">
+    <div class="loading" id="loading">Cargando carta…</div>
+  </main>
+
+  <!-- Barra inferior -->
+  <div class="bar" id="bar">
+    <button class="cta" id="goCheckout">
+      <span>Ver pedido</span>
+      <span class="count" id="barCount">0 · 0,00 €</span>
+    </button>
+  </div>
+
+  <!-- Checkout -->
+  <div class="sheet" id="checkout">
+    <header>
+      <button class="back" id="back">‹</button>
+      <h1>Tu pedido</h1>
+    </header>
+    <div class="sec">
+      <div id="cartLines"></div>
+      <div class="total"><span>Total</span><span id="cartTotal">0,00 €</span></div>
+
+      <label class="f">Nombre completo</label>
+      <input class="t" id="fNombre" placeholder="Tu nombre" autocomplete="name">
+
+      <label class="f">Teléfono</label>
+      <input class="t" id="fTel" type="tel" placeholder="600 000 000" autocomplete="tel">
+
+      <label class="f">¿Cómo lo recibes?</label>
+      <div class="toggle">
+        <button data-e="pickup" class="active">🏃 Recoger</button>
+        <button data-e="delivery">🛵 A domicilio</button>
+      </div>
+
+      <div id="dirWrap" class="hidden">
+        <label class="f">Dirección de entrega</label>
+        <input class="t" id="fDir" placeholder="Calle, número, piso…" autocomplete="street-address">
+      </div>
+
+      <label class="f">Notas (opcional)</label>
+      <textarea class="t" id="fNotas" rows="2" placeholder="Sin cebolla, alergias…"></textarea>
+
+      <button class="send" id="send">Enviar pedido</button>
     </div>
 
-    <div id="miFormulario">
-        <div class="form-group">
-            <label for="nombre">Nombre para el pedido:</label>
-            <input type="text" id="nombre" placeholder="Ej: Dani" autocomplete="off" required>
-        </div>
-
-        <div class="form-group">
-            <label for="telefono">Teléfono móvil:</label>
-            <input type="tel" id="telefono" placeholder="Ej: 612345678" autocomplete="off" required>
-        </div>
-
-        <div class="form-group" id="grupo-direccion" style="display: none;">
-            <label for="direccion">Dirección completa de entrega:</label>
-            <input type="text" id="direccion" placeholder="Calle, número, piso, puerta..." autocomplete="off">
-        </div>
-
-        <div class="footer">
-            <button id="btn-enviar" onclick="enviarAlBot()">Confirmar Pedido</button>
-        </div>
-
-        <p class="rgpd-inline">
-            🔒 Al confirmar, aceptas que tus datos se usen únicamente para gestionar este pedido y se eliminen al finalizarlo.
-        </p>
-
-        <details class="rgpd">
-            <summary>📄 Política de privacidad y protección de datos ▾</summary>
-
-            <h4>Responsable del tratamiento</h4>
-            <p><strong id="txt-nombre-local"></strong> · Contacto: <span id="txt-email-local"></span></p>
-
-            <h4>¿Qué datos recogemos?</h4>
-            <p>Nombre, teléfono y, en pedidos a domicilio, dirección de entrega.</p>
-
-            <h4>¿Para qué los usamos?</h4>
-            <p>Exclusivamente para gestionar y entregar tu pedido. No se usarán para publicidad, spam ni ningún otro fin.</p>
-
-            <h4>¿Cuánto tiempo los guardamos?</h4>
-            <p>El tiempo mínimo necesario para completar el pedido (máximo 1 hora). Se eliminan automáticamente una vez procesado.</p>
-
-            <h4>Base legal</h4>
-            <p>Ejecución de contrato (Art. 6.1.b RGPD). No necesitas dar consentimiento adicional: los datos son imprescindibles para entregarte el pedido.</p>
-
-            <h4>¿Cedemos datos a terceros?</h4>
-            <p>No. Telegram actúa como canal de comunicación y tiene su propia política de privacidad. No cedemos datos a ningún tercero con fines comerciales.</p>
-
-            <h4>Tus derechos</h4>
-            <p>Puedes ejercer tus derechos de acceso, rectificación, supresión, oposición y portabilidad escribiendo a <span id="txt-email-legal"></span>. También puedes reclamar ante la <strong>AEPD</strong> (aepd.es).</p>
-        </details>
+    <!-- Confirmación -->
+    <div class="status hidden" id="done">
+      <div class="emoji">✅</div>
+      <h2>¡Pedido enviado!</h2>
+      <p>Vuelve a WhatsApp: el restaurante te confirmará en un momento.</p>
     </div>
+  </div>
 
 <script>
-    // ── Variables del restaurante (cambiar por cliente) ──
-    const NOMBRE_LOCAL = "Don Fabio";
-    const EMAIL_LOCAL  = "info@donfabio.es";
+(function () {
+  "use strict";
 
-    document.getElementById('txt-nombre-local').textContent = NOMBRE_LOCAL;
-    document.getElementById('txt-email-local').textContent  = EMAIL_LOCAL;
-    document.getElementById('txt-email-legal').textContent  = EMAIL_LOCAL;
+  // ── Config vía parámetros de URL ──
+  const P = new URLSearchParams(location.search);
+  const WA   = P.get('wa')  || '';                 // nº WhatsApp del cliente
+  const RID  = P.get('r')   || 'demo';             // id restaurante (multi-tenant)
+  const API  = (P.get('api') || 'https://n8n.danipr20.com').replace(/\/$/, '');
+  const MENU_URL   = `${API}/webhook/menu?r=${encodeURIComponent(RID)}&_=${Date.now()}`;
+  const PEDIDO_URL = `${API}/webhook/pedido-web`;
 
-    const tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
+  // ── Datos demo (fallback si no hay backend aún) ──
+  const DEMO = [
+    { cat: 'Entrantes', nom: 'Croquetas de jamón', prec: 6.5, desc: '8 unidades caseras' },
+    { cat: 'Entrantes', nom: 'Ensalada César', prec: 7.9, desc: 'Pollo, parmesano, crutones' },
+    { cat: 'Entrantes', nom: 'Nachos con guacamole', prec: 6.9, desc: '' },
+    { cat: 'Pizzas', nom: 'Margarita', prec: 8.5, desc: 'Tomate, mozzarella, albahaca' },
+    { cat: 'Pizzas', nom: 'Cuatro quesos', prec: 10.5, desc: '' },
+    { cat: 'Pizzas', nom: 'Barbacoa', prec: 11.0, desc: 'Ternera, bacon, salsa BBQ' },
+    { cat: 'Hamburguesas', nom: 'Clásica', prec: 9.0, desc: 'Ternera 180g, cheddar' },
+    { cat: 'Hamburguesas', nom: 'Doble bacon', prec: 11.5, desc: '' },
+    { cat: 'Bebidas', nom: 'Coca-Cola', prec: 2.2, desc: '' },
+    { cat: 'Bebidas', nom: 'Agua', prec: 1.5, desc: '' },
+    { cat: 'Postres', nom: 'Tarta de queso', prec: 4.5, desc: '' },
+  ];
 
-    const queryId = tg.initDataUnsafe.query_id;
+  let carta = [];
+  const cart = {};            // key = índice producto → qty
+  let entrega = 'pickup';
 
-    const urlParams     = new URLSearchParams(window.location.search);
-    const metodo        = urlParams.get('metodo');
-    const tokenDinamico = urlParams.get('t');
+  const $ = s => document.querySelector(s);
+  const fmt = n => n.toFixed(2).replace('.', ',') + ' €';
 
-    if (metodo === 'd') {
-        document.getElementById('grupo-direccion').style.display = 'block';
+  // ── Normaliza filas (acepta cabeceras variadas de Google Sheets) ──
+  function normaliza(rows) {
+    return rows.map(item => {
+      const o = {};
+      for (const k in item) {
+        const kl = k.toLowerCase();
+        if (kl === 'cat' || kl.includes('categor'))                       o.cat  = String(item[k]).trim();
+        else if (kl === 'nom' || kl.includes('product') || kl.includes('nombre')) o.nom  = String(item[k]).trim();
+        else if (kl === 'prec' || kl.includes('precio'))                  o.prec = parseFloat(String(item[k]).replace(',', '.')) || 0;
+        else if (kl === 'desc' || kl.includes('descrip'))                 o.desc = String(item[k]).trim();
+      }
+      return o;
+    }).filter(p => p.cat && p.nom);
+  }
+
+  // ── Carga la carta ──
+  // Pinta demo al instante y luego intenta sustituir por la carta real del backend.
+  function cargar() {
+    carta = normaliza(DEMO);
+    render();
+    fetch(MENU_URL, { headers: { 'Accept': 'application/json' } })
+      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(data => {
+        const rows = Array.isArray(data) ? data : (data.carta || data.items || []);
+        const real = normaliza(rows);
+        if (real.length) { carta = real; render(); }
+      })
+      .catch(e => console.warn('Sin backend, uso carta demo:', e.message));
+  }
+
+  // ── Render carta ──
+  function render() {
+    $('#loading')?.remove();
+    const cats = [...new Set(carta.map(p => p.cat))];
+
+    // chips
+    const chips = $('#cats');
+    chips.innerHTML = '';
+    cats.forEach((c, i) => {
+      const b = document.createElement('button');
+      b.className = 'chip' + (i === 0 ? ' active' : '');
+      b.textContent = c;
+      b.onclick = () => {
+        document.getElementById('sec_' + i)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+      chips.appendChild(b);
+    });
+
+    // secciones
+    const menu = $('#menu');
+    menu.innerHTML = '';
+    cats.forEach((c, ci) => {
+      const h = document.createElement('div');
+      h.className = 'cat-title'; h.id = 'sec_' + ci; h.textContent = c;
+      menu.appendChild(h);
+      carta.forEach((p, idx) => {
+        if (p.cat !== c) return;
+        menu.appendChild(itemRow(p, idx));
+      });
+    });
+  }
+
+  function itemRow(p, idx) {
+    const row = document.createElement('div');
+    row.className = 'item'; row.dataset.name = p.nom.toLowerCase(); row.dataset.idx = idx;
+    row.innerHTML =
+      `<div class="item-info">
+         <p class="item-name">${esc(p.nom)}</p>
+         ${p.desc ? `<p class="item-desc">${esc(p.desc)}</p>` : ''}
+         <span class="item-price">${fmt(p.prec)}</span>
+       </div>
+       <div class="stepper">
+         <button class="minus" hidden>−</button>
+         <span class="qty" hidden>0</span>
+         <button class="add">+</button>
+       </div>`;
+    const minus = row.querySelector('.minus');
+    const qty   = row.querySelector('.qty');
+    const add   = row.querySelector('.add');
+    const upd = () => {
+      const q = cart[idx] || 0;
+      qty.textContent = q; qty.hidden = q === 0; minus.hidden = q === 0;
+      refreshBar();
+    };
+    add.onclick   = () => { cart[idx] = (cart[idx] || 0) + 1; upd(); };
+    minus.onclick = () => { cart[idx] = Math.max(0, (cart[idx] || 0) - 1); if (!cart[idx]) delete cart[idx]; upd(); };
+    return row;
+  }
+
+  // ── Buscador ──
+  $('#search').addEventListener('input', e => {
+    const q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('.item').forEach(el => {
+      el.style.display = !q || el.dataset.name.includes(q) ? '' : 'none';
+    });
+    document.querySelectorAll('.cat-title').forEach(h => {
+      // oculta título si su sección quedó vacía
+      let n = h.nextElementSibling, vis = false;
+      while (n && n.classList.contains('item')) { if (n.style.display !== 'none') vis = true; n = n.nextElementSibling; }
+      h.style.display = vis ? '' : 'none';
+    });
+  });
+
+  // ── Barra inferior + totales ──
+  function totales() {
+    let n = 0, t = 0;
+    for (const idx in cart) { n += cart[idx]; t += cart[idx] * carta[idx].prec; }
+    return { n, t };
+  }
+  function refreshBar() {
+    const { n, t } = totales();
+    $('#barCount').textContent = `${n} · ${fmt(t)}`;
+    $('#bar').classList.toggle('show', n > 0);
+  }
+
+  // ── Checkout ──
+  $('#goCheckout').onclick = () => { pintarCarrito(); $('#checkout').classList.add('show'); };
+  $('#back').onclick = () => $('#checkout').classList.remove('show');
+
+  function pintarCarrito() {
+    const cont = $('#cartLines'); cont.innerHTML = '';
+    for (const idx in cart) {
+      const p = carta[idx], q = cart[idx];
+      const l = document.createElement('div');
+      l.className = 'cart-line';
+      l.innerHTML = `<span class="l">${esc(p.nom)}</span><span class="q">×${q}</span><span>${fmt(p.prec * q)}</span>`;
+      cont.appendChild(l);
     }
+    $('#cartTotal').textContent = fmt(totales().t);
+  }
 
-    function enviarAlBot() {
-        const nombre    = document.getElementById('nombre').value.trim();
-        const telefono  = document.getElementById('telefono').value.trim();
-        const direccion = document.getElementById('direccion').value.trim();
+  document.querySelectorAll('.toggle button').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('.toggle button').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      entrega = b.dataset.e;
+      $('#dirWrap').classList.toggle('hidden', entrega !== 'delivery');
+    };
+  });
 
-        if (!nombre || !telefono) {
-            tg.showAlert("Por favor, rellena tu nombre y número de contacto.");
-            return;
-        }
+  // ── Envío ──
+  $('#send').onclick = async () => {
+    const nombre = $('#fNombre').value.trim();
+    const tel    = $('#fTel').value.trim();
+    const dir    = $('#fDir').value.trim();
+    const notas  = $('#fNotas').value.trim();
+    if (!nombre) return alert('Pon tu nombre.');
+    if (!tel)    return alert('Pon tu teléfono.');
+    if (entrega === 'delivery' && !dir) return alert('Pon la dirección de entrega.');
+    if (!totales().n) return alert('Tu pedido está vacío.');
 
-        if (metodo === 'd' && !direccion) {
-            tg.showAlert("La dirección es obligatoria para envíos a domicilio.");
-            return;
-        }
+    const items = Object.keys(cart).map(idx => ({
+      nom: carta[idx].nom, prec: carta[idx].prec, qty: cart[idx]
+    }));
+    const payload = {
+      wa: WA, r: RID,
+      cliente: { nombre, tel, dir },
+      entrega, notas,
+      items, total: totales().t
+    };
 
-        if (!tokenDinamico) {
-            tg.showAlert("Error de seguridad: falta la clave de sesión del bot.");
-            return;
-        }
-
-        const nombreClean = nombre.replace(/\|\|/g, "").replace(/-/g, " ");
-        const telClean    = telefono.replace(/\|\|/g, "").replace(/-/g, " ");
-        const destino     = metodo === 'd'
-            ? direccion.replace(/\|\|/g, "").substring(0, 60)
-            : 'r';
-
-        const stringAccion = `snd||${nombreClean}-${telClean}||${destino}`;
-
-        const respuestaTelegram = {
-            web_app_query_id: queryId,
-            result: {
-                type: "article",
-                id: "pedido_" + Date.now(),
-                title: "Pedido " + NOMBRE_LOCAL,
-                input_message_content: {
-                    message_text: stringAccion
-                }
-            }
-        };
-
-        fetch(`https://api.telegram.org/bot${tokenDinamico}/answerWebAppQuery`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(respuestaTelegram)
-        })
-        .then(r => r.json())
-        .then(res => {
-            if (res.ok) {
-                tg.close();
-            } else {
-                tg.showAlert("Error con Telegram: " + res.description);
-            }
-        })
-        .catch(() => {
-            tg.showAlert("Error al procesar el envío. Inténtalo de nuevo.");
-        });
+    const btn = $('#send'); btn.disabled = true; btn.textContent = 'Enviando…';
+    try {
+      const r = await fetch(PEDIDO_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      $('#cartLines').parentElement.querySelectorAll('label, input, textarea, .toggle, .send, #cartLines, .total, #dirWrap')
+        .forEach(el => el.classList.add('hidden'));
+      $('#done').classList.remove('hidden');
+    } catch (e) {
+      alert('No se pudo enviar el pedido. Inténtalo de nuevo.\n' + e.message);
+      btn.disabled = false; btn.textContent = 'Enviar pedido';
     }
+  };
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+
+  cargar();
+})();
 </script>
 </body>
 </html>
