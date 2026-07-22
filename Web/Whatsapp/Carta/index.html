@@ -194,6 +194,45 @@
   .status p { color: var(--muted); }
   .hidden { display: none !important; }
   .loading { text-align: center; color: var(--muted); padding: 40px; }
+  .field-err { border-color: var(--danger) !important; }
+  .note-inp { width: 100%; padding: 6px 8px; border: 1px solid var(--brand); border-radius: 8px; font-size: 13px; background: var(--card); color: var(--text); }
+  .toast {
+    position: fixed; left: 50%; bottom: 92px; transform: translateX(-50%) translateY(20px);
+    background: #1f2937; color: #fff; padding: 12px 18px; border-radius: 12px; font-size: 14px;
+    font-weight: 600; box-shadow: 0 6px 20px rgba(0,0,0,.35); z-index: 60; opacity: 0;
+    pointer-events: none; transition: opacity .2s ease, transform .2s ease; max-width: 86%; text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Banner "cerrado ahora" */
+  .closed-banner {
+    background: #7c2d12; color: #fff; font-size: 13px; font-weight: 600;
+    padding: 10px 16px; text-align: center; line-height: 1.4;
+  }
+
+  /* Alérgenos */
+  .alerg-title { font-size: 12px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .04em; margin: 10px 0 4px; }
+  .alerg-wrap { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+  .alerg { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+    background: rgba(234,179,8,.16); color: #a16207; border: 1px solid rgba(234,179,8,.35); }
+  .alerg-none { font-size: 13px; color: var(--muted); margin: 4px 0 6px; }
+  @media (prefers-color-scheme: dark) { .alerg { color: #fde68a; } }
+
+  /* Plato agotado */
+  .item.sold { opacity: .55; cursor: default; }
+  .item.sold:active { transform: none; }
+  .item.sold .item-name { text-decoration: line-through; }
+  .sold-badge { display: inline-block; font-size: 11px; font-weight: 700; color: var(--danger);
+    border: 1px solid var(--danger); border-radius: 6px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; }
+
+  /* Plato destacado */
+  .star { color: #f59e0b; margin-right: 3px; }
+
+  /* Spinner de carga */
+  .spinner { width: 34px; height: 34px; margin: 0 auto 14px; border-radius: 50%;
+    border: 3px solid var(--line); border-top-color: var(--brand); animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -202,6 +241,8 @@
     <h1 id="localName">Carta</h1>
     <input class="search" id="search" placeholder="🔎 Buscar plato…" autocomplete="off">
   </header>
+
+  <div class="closed-banner hidden" id="closedBanner"></div>
 
   <div class="cats" id="cats"></div>
 
@@ -223,9 +264,10 @@
       <button class="dish-close" id="dishClose">×</button>
       <h2 id="dishName"></h2>
       <p class="dish-desc" id="dishDesc"></p>
+      <div id="dishAlerg"></div>
       <div class="dish-price" id="dishPrice"></div>
-      <label class="f">Nota para este plato (opcional)</label>
-      <input class="t" id="dishNote" placeholder="Ej: sin cebolla, poco hecho, para llevar…">
+      <label class="f">Indicación para este plato</label>
+      <input class="t" id="dishNote" placeholder="Opcional">
       <div class="dish-actions">
         <div class="stepper">
           <button id="dishMinus">−</button>
@@ -253,7 +295,7 @@
       <input class="t" id="fNombre" placeholder="Tu nombre" autocomplete="name">
 
       <label class="f">Teléfono (tu WhatsApp) — confírmalo o cámbialo</label>
-      <input class="t" id="fTel" type="tel" placeholder="600 000 000" autocomplete="tel">
+      <input class="t" id="fTel" type="tel" placeholder="Tu teléfono" autocomplete="tel">
 
       <label class="f">¿Cómo lo recibes?</label>
       <div class="toggle" id="tgEntrega">
@@ -269,7 +311,7 @@
           <input class="t" id="aPiso" placeholder="Piso / Puerta">
           <input class="t" id="aCp" placeholder="Código postal" inputmode="numeric">
           <input class="t" id="aCiudad" placeholder="Ciudad" autocomplete="address-level2">
-          <input class="t col2" id="aNota" placeholder="Indicaciones (código portal, timbre…)">
+          <input class="t col2" id="aNota" placeholder="Indicaciones para el repartidor">
         </div>
       </div>
 
@@ -281,12 +323,12 @@
 
       <div id="cashWrap" class="hidden">
         <label class="f">¿Con cuánto pagas? (para el cambio)</label>
-        <input class="t" id="fPagaCon" type="text" inputmode="decimal" placeholder="Ej: 20">
+        <input class="t" id="fPagaCon" type="text" inputmode="decimal" placeholder="Importe con el que pagas">
         <div id="cambioInfo" class="brk" style="padding-top:8px;"></div>
       </div>
 
-      <label class="f">Notas para el pedido / entrega (opcional)</label>
-      <textarea class="t" id="fNotas" rows="2" placeholder="Ej: llamar al llegar, sin cubiertos…"></textarea>
+      <label class="f">Indicaciones para el restaurante</label>
+      <textarea class="t" id="fNotas" rows="2" placeholder="Opcional"></textarea>
 
       <button class="send" id="send">Enviar pedido</button>
     </div>
@@ -297,6 +339,8 @@
       <p>Vuelve a WhatsApp: el restaurante te confirmará en un momento.</p>
     </div>
   </div>
+
+  <div class="toast" id="toast"></div>
 
 <script>
 (function () {
@@ -310,9 +354,14 @@
   const MENU_URL   = `${API}/webhook/menu?r=${encodeURIComponent(RID)}&_=${Date.now()}`;
   const PEDIDO_URL = `${API}/webhook/pedido-web`;
 
-  // Config de negocio (idealmente vendrá del backend; por ahora ajustable por URL)
-  const COSTE_ENVIO   = parseFloat(P.get('envio') || '2.50');
-  const PEDIDO_MINIMO = parseFloat(P.get('min')   || '10');
+  // Config de negocio: llega del backend (hoja "config"); la URL puede forzar valores.
+  const URL_ENVIO = P.get('envio'), URL_MIN = P.get('min');
+  let COSTE_ENVIO   = parseFloat(URL_ENVIO || '2.50');
+  let PEDIDO_MINIMO = parseFloat(URL_MIN   || '10');   // mínimo domicilio
+  let MIN_RECOGIDA  = 0;
+  let BIZ = {};                 // config del negocio (nombre, horario, envío…)
+  let cerradoAhora = false;
+  const USE_DEMO = P.get('demo') === '1';   // menú de ejemplo, solo para pruebas locales
 
   const DEMO = [
     { cat: 'Entrantes', nom: 'Croquetas de jamón', prec: 6.5, desc: 'Ración de 8 croquetas caseras de jamón ibérico, bechamel cremosa.' },
@@ -339,32 +388,81 @@
   function saveCart() { try { localStorage.setItem(LS_KEY, JSON.stringify(lines)); } catch (e) {} }
   function loadCart() { try { lines = JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch (e) { lines = []; } }
 
-  // ── Normaliza filas del Sheet ──
-  function normaliza(rows) {
-    return rows.map(item => {
-      const o = {};
-      for (const k in item) {
-        const kl = k.toLowerCase();
-        if (kl === 'cat' || kl.includes('categor'))                              o.cat  = String(item[k]).trim();
-        else if (kl === 'nom' || kl.includes('product') || kl.includes('nombre')) o.nom  = String(item[k]).trim();
-        else if (kl === 'prec' || kl.includes('precio'))                         o.prec = parseFloat(String(item[k]).replace(',', '.')) || 0;
-        else if (kl === 'desc' || kl.includes('descrip') || kl.includes('ingred')) o.desc = String(item[k]).trim();
-      }
-      return o;
-    }).filter(p => p.cat && p.nom);
+  // ── Normaliza un plato (del backend o del demo) con valores por defecto ──
+  function withDefaults(p) {
+    const alerg = Array.isArray(p.alerg) ? p.alerg
+      : (p.alerg ? String(p.alerg).split(/[,;\/]/).map(s => s.trim()).filter(Boolean) : []);
+    return {
+      cat:  String(p.cat  || '').trim(),
+      nom:  String(p.nom  || '').trim(),
+      prec: parseFloat(String(p.prec).replace(',', '.')) || 0,
+      desc: String(p.desc || '').trim(),
+      disp: p.disp !== false,
+      dest: !!p.dest,
+      alerg,
+      foto: p.foto || ''
+    };
+  }
+
+  // ── Aplica la config del negocio (nombre, envío, mínimos, horario) ──
+  function aplicarConfig(cfg) {
+    BIZ = cfg || {};
+    if (BIZ.nombre) { $('#localName').textContent = BIZ.nombre; document.title = BIZ.nombre + ' · Pedido'; }
+    if (BIZ.envio        != null && !URL_ENVIO) COSTE_ENVIO   = BIZ.envio;
+    if (BIZ.minDomicilio != null && !URL_MIN)   PEDIDO_MINIMO = BIZ.minDomicilio;
+    if (BIZ.minRecogida  != null)               MIN_RECOGIDA  = BIZ.minRecogida;
+    evaluarHorario();
+  }
+
+  // ── ¿Abierto ahora? (horario y día de cierre de la config) ──
+  const DIAS = ['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
+  const sinAcento = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const aMin = t => { const m = String(t).match(/(\d{1,2})\D+(\d{2})/) || String(t).match(/(\d{1,2})/); return m ? (+m[1]) * 60 + (+(m[2] || 0)) : null; };
+  function abiertoAhora() {
+    if (!BIZ.apertura || !BIZ.cierre) return true;                 // sin horario => siempre abierto
+    const now = new Date();
+    const cerrados = sinAcento(BIZ.cerrado).split(/[,;\/]/).map(s => s.trim()).filter(Boolean);
+    if (cerrados.includes(DIAS[now.getDay()])) return false;
+    const a = aMin(BIZ.apertura), b = aMin(BIZ.cierre);
+    if (a == null || b == null) return true;
+    const n = now.getHours() * 60 + now.getMinutes();
+    return b > a ? (n >= a && n < b) : (n >= a || n < b);          // b<a => cruza medianoche
+  }
+  function evaluarHorario() {
+    cerradoAhora = !abiertoAhora();
+    const banner = $('#closedBanner');
+    if (cerradoAhora) {
+      banner.textContent = '🌙 Cerrado ahora — puedes ver la carta, pero los pedidos se abren en horario.';
+      banner.classList.remove('hidden');
+    } else banner.classList.add('hidden');
+    if ($('#checkout').classList.contains('show')) pintarDesglose();
+  }
+
+  // ── Estados de carga (sin datos de ejemplo en producción) ──
+  function mostrarCargando() {
+    $('#menu').innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando la carta…</p></div>';
+  }
+  function mostrarError() {
+    $('#menu').innerHTML =
+      '<div class="loading"><div style="font-size:40px">📶</div>' +
+      '<p>No hemos podido cargar la carta.<br>Comprueba tu conexión.</p>' +
+      '<button class="chip" id="retry" style="margin-top:10px;padding:10px 20px">Reintentar</button></div>';
+    $('#retry').onclick = cargar;
   }
 
   function cargar() {
-    carta = normaliza(DEMO);
-    render();
+    if (USE_DEMO) { aplicarConfig({}); carta = DEMO.map(withDefaults); render(); return; }
+    mostrarCargando();
     fetch(MENU_URL, { headers: { 'Accept': 'application/json' } })
       .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(data => {
+        aplicarConfig((data && data.config) || {});
         const rows = Array.isArray(data) ? data : (data.carta || data.items || []);
-        const real = normaliza(rows);
-        if (real.length) { carta = real; render(); }
+        const real = rows.map(withDefaults).filter(p => p.cat && p.nom);
+        if (!real.length) return mostrarError();
+        carta = real; render();
       })
-      .catch(e => console.warn('Sin backend, uso carta demo:', e.message));
+      .catch(e => { console.warn('Error al cargar la carta:', e.message); mostrarError(); });
   }
 
   // ── Render carta ──
@@ -401,18 +499,43 @@
     return lines.filter(l => l.nom === nom).reduce((s, l) => s + l.qty, 0);
   }
 
+  // Añade una línea al carrito (fusiona si mismo plato y misma nota)
+  function addLinea(p, qty, nota) {
+    nota = (nota || '').trim();
+    const ex = lines.find(l => l.nom === p.nom && (l.nota || '') === nota);
+    if (ex) ex.qty += qty;
+    else lines.push({ nom: p.nom, prec: p.prec, qty, nota });
+    saveCart(); render();
+  }
+
+  // Mensaje propio (sin diálogos del navegador)
+  let toastT;
+  function toast(msg) {
+    const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600);
+  }
+
   function itemRow(p, idx) {
     const row = document.createElement('div');
-    row.className = 'item'; row.dataset.name = p.nom.toLowerCase();
+    row.className = 'item' + (p.disp ? '' : ' sold');
+    row.dataset.name = p.nom.toLowerCase();
     const q = qtyEnCarrito(p.nom);
+    const star  = p.dest ? '<span class="star">★</span>' : '';
+    const badge = p.disp ? '' : '<span class="sold-badge">Agotado</span>';
     row.innerHTML =
       `<div class="item-info">
-         <p class="item-name">${esc(p.nom)}</p>
+         <p class="item-name">${star}${esc(p.nom)}${badge}</p>
          ${p.desc ? `<p class="item-desc">${esc(p.desc)}</p>` : ''}
          <span class="item-price">${fmt(p.prec)}</span>
-       </div>
-       <button class="item-add">+${q ? `<span class="qbadge">${q}</span>` : ''}</button>`;
-    row.onclick = () => abrirFicha(idx);
+       </div>` +
+      (p.disp ? `<button class="item-add" aria-label="Añadir">+${q ? `<span class="qbadge">${q}</span>` : ''}</button>` : '');
+    if (p.disp) {
+      // Tocar el plato → ficha con opciones; "+" → añadir directo
+      row.onclick = () => abrirFicha(idx);
+      row.querySelector('.item-add').onclick = (e) => { e.stopPropagation(); addLinea(p, 1, ''); };
+    } else {
+      row.onclick = () => toast('Este plato está agotado ahora mismo');
+    }
     return row;
   }
 
@@ -422,11 +545,21 @@
     const p = carta[idx];
     $('#dishName').textContent = p.nom;
     $('#dishDesc').textContent = p.desc || 'Sin descripción disponible.';
+    pintarAlergenos(p);
     $('#dishPrice').textContent = fmt(p.prec);
     $('#dishNote').value = '';
     $('#dishQty').textContent = '1';
     actualizarBotonFicha();
     $('#dish').classList.add('show');
+  }
+  function pintarAlergenos(p) {
+    const el = $('#dishAlerg');
+    if (p.alerg && p.alerg.length) {
+      el.innerHTML = '<div class="alerg-title">Alérgenos</div><div class="alerg-wrap">' +
+        p.alerg.map(a => `<span class="alerg">${esc(a)}</span>`).join('') + '</div>';
+    } else {
+      el.innerHTML = '<p class="alerg-none">Alérgenos no especificados — consúltalos con el restaurante.</p>';
+    }
   }
   function cerrarFicha() { $('#dish').classList.remove('show'); }
   function actualizarBotonFicha() {
@@ -438,13 +571,8 @@
   $('#dishMinus').onclick = () => { dishQty = Math.max(1, dishQty - 1); $('#dishQty').textContent = dishQty; actualizarBotonFicha(); };
   $('#dishPlus').onclick  = () => { dishQty++; $('#dishQty').textContent = dishQty; actualizarBotonFicha(); };
   $('#dishAdd').onclick = () => {
-    const p = carta[dishIdx];
-    const nota = $('#dishNote').value.trim();
-    // fusiona si mismo plato y misma nota
-    const ex = lines.find(l => l.nom === p.nom && (l.nota || '') === nota);
-    if (ex) ex.qty += dishQty;
-    else lines.push({ nom: p.nom, prec: p.prec, qty: dishQty, nota });
-    saveCart(); cerrarFicha(); render();
+    addLinea(carta[dishIdx], dishQty, $('#dishNote').value);
+    cerrarFicha();
   };
 
   // ── Sticky + scrollspy ──
@@ -530,8 +658,12 @@
     });
     cont.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
       const i = +b.dataset.edit;
-      const nv = prompt('Nota para "' + lines[i].nom + '":', lines[i].nota || '');
-      if (nv !== null) { lines[i].nota = nv.trim(); saveCart(); pintarCarrito(); }
+      const noteDiv = b.closest('.cline-note');
+      noteDiv.innerHTML = `<input class="note-inp" type="text" maxlength="80" placeholder="Indicación para este plato" value="${esc(lines[i].nota || '')}">`;
+      const inp = noteDiv.querySelector('input');
+      inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
+      inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') inp.blur(); else if (ev.key === 'Escape') pintarCarrito(); });
+      inp.addEventListener('blur', () => { lines[i].nota = inp.value.trim(); saveCart(); pintarCarrito(); });
     });
     pintarDesglose();
   }
@@ -545,14 +677,15 @@
       `<div class="brk total"><span>Total</span><span>${fmt(tot)}</span></div>`;
 
     const warn = $('#minWarn');
-    if (entrega === 'delivery' && sub < PEDIDO_MINIMO) {
-      warn.textContent = `Pedido mínimo para domicilio: ${fmt(PEDIDO_MINIMO)}. Te faltan ${fmt(PEDIDO_MINIMO - sub)}.`;
-      warn.classList.remove('hidden');
-      $('#send').disabled = true;
-    } else {
-      warn.classList.add('hidden');
-      $('#send').disabled = false;
-    }
+    let bloqueo = '';
+    if (cerradoAhora)
+      bloqueo = '🌙 Ahora mismo está cerrado. No se pueden enviar pedidos en este momento.';
+    else if (entrega === 'delivery' && sub < PEDIDO_MINIMO)
+      bloqueo = `Pedido mínimo para domicilio: ${fmt(PEDIDO_MINIMO)}. Te faltan ${fmt(PEDIDO_MINIMO - sub)}.`;
+    else if (entrega === 'pickup' && MIN_RECOGIDA && sub < MIN_RECOGIDA)
+      bloqueo = `Pedido mínimo para recoger: ${fmt(MIN_RECOGIDA)}. Te faltan ${fmt(MIN_RECOGIDA - sub)}.`;
+    if (bloqueo) { warn.textContent = bloqueo; warn.classList.remove('hidden'); $('#send').disabled = true; }
+    else { warn.classList.add('hidden'); $('#send').disabled = false; }
     actualizarCambio();
   }
 
@@ -588,17 +721,20 @@
     const nombre = $('#fNombre').value.trim();
     const tel    = $('#fTel').value.trim();
     const notas  = $('#fNotas').value.trim();
-    if (!nombre) return alert('Pon tu nombre.');
-    if (!tel)    return alert('Pon tu teléfono.');
-    if (!numItems()) return alert('Tu pedido está vacío.');
+    if (cerradoAhora) { toast('Ahora mismo está cerrado'); return; }
+    if (!nombre) { toast('Añade tu nombre'); $('#fNombre').focus(); return; }
+    if (!tel)    { toast('Añade tu teléfono'); $('#fTel').focus(); return; }
+    if (!numItems()) { toast('Tu pedido está vacío'); return; }
+    if (entrega === 'pickup' && MIN_RECOGIDA && subtotal() < MIN_RECOGIDA) { toast('No llegas al pedido mínimo para recoger'); return; }
 
     let direccion = null, direccionTxt = '';
     if (entrega === 'delivery') {
       const calle = $('#aCalle').value.trim(), numero = $('#aNumero').value.trim();
       const piso = $('#aPiso').value.trim(), cp = $('#aCp').value.trim();
       const ciudad = $('#aCiudad').value.trim(), notaDir = $('#aNota').value.trim();
-      if (!calle || !numero) return alert('Completa al menos calle y número.');
-      if (subtotal() < PEDIDO_MINIMO) return alert('No llegas al pedido mínimo para domicilio.');
+      if (!calle)  { toast('Añade la calle'); $('#aCalle').focus(); return; }
+      if (!numero) { toast('Añade el número'); $('#aNumero').focus(); return; }
+      if (subtotal() < PEDIDO_MINIMO) { toast('No llegas al pedido mínimo para domicilio'); return; }
       direccion = { calle, numero, piso, cp, ciudad, nota: notaDir };
       direccionTxt = `${calle} ${numero}${piso ? ', ' + piso : ''}${cp || ciudad ? ' — ' + [cp, ciudad].filter(Boolean).join(' ') : ''}`;
     }
@@ -630,7 +766,7 @@
       $('#checkoutBody').classList.add('hidden');
       $('#done').classList.remove('hidden');
     } catch (e) {
-      alert('No se pudo enviar el pedido. Inténtalo de nuevo.\n' + e.message);
+      toast('No se pudo enviar. Inténtalo de nuevo.');
       btn.disabled = false; btn.textContent = 'Enviar pedido';
     }
   };
@@ -642,6 +778,7 @@
   if (NAME) $('#fNombre').value = NAME;
   loadCart();
   cargar();
+  setInterval(evaluarHorario, 60000);   // recalcula abierto/cerrado si la página sigue abierta
 })();
 </script>
 </body>
