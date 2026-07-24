@@ -85,6 +85,14 @@
     background: var(--danger); color: #fff; border-radius: 999px; font-size: 11px;
     font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px;
   }
+  /* Stepper en la carta (cuando el plato ya está en el pedido) */
+  .item-step { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+  .item-step button {
+    width: 34px; height: 36px; border-radius: 9px; border: none;
+    background: var(--brand); color: #fff; font-size: 20px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; line-height: 1; padding: 0;
+  }
+  .item-step .n { min-width: 22px; text-align: center; font-weight: 700; font-size: 15px; }
 
   /* Barra inferior */
   .bar {
@@ -385,8 +393,22 @@
   const fmt = n => (Number(n) || 0).toFixed(2).replace('.', ',') + ' €';
 
   // ── Persistencia ──
-  function saveCart() { try { localStorage.setItem(LS_KEY, JSON.stringify(lines)); } catch (e) {} }
-  function loadCart() { try { lines = JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch (e) { lines = []; } }
+  // El carrito caduca: sirve para no perderlo si recargas, pero no para resucitar
+  // un pedido de hace días cuando el cliente vuelve a abrir la carta.
+  const CART_TTL_MS = 4 * 60 * 60 * 1000;   // 4 horas
+  function saveCart() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ t: Date.now(), lines })); } catch (e) {}
+  }
+  function loadCart() {
+    lines = [];
+    try {
+      const raw = JSON.parse(localStorage.getItem(LS_KEY));
+      if (!raw) return;
+      if (Array.isArray(raw)) return localStorage.removeItem(LS_KEY);   // formato viejo (sin fecha)
+      if (Date.now() - (raw.t || 0) > CART_TTL_MS) return localStorage.removeItem(LS_KEY);
+      lines = Array.isArray(raw.lines) ? raw.lines : [];
+    } catch (e) { lines = []; }
+  }
 
   // ── Normaliza un plato (del backend o del demo) con valores por defecto ──
   function withDefaults(p) {
@@ -453,8 +475,12 @@
   function cargar() {
     if (USE_DEMO) { aplicarConfig({}); carta = DEMO.map(withDefaults); render(); return; }
     mostrarCargando();
-    fetch(MENU_URL, { headers: { 'Accept': 'application/json' } })
-      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    // Timeout: si la red bloquea/cuelga la petición (p.ej. PNA en el WiFi del local),
+    // cortamos a los 8s y mostramos error en vez de girar el spinner para siempre.
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    fetch(MENU_URL, { headers: { 'Accept': 'application/json' }, signal: ctrl.signal })
+      .then(r => { clearTimeout(t); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(data => {
         aplicarConfig((data && data.config) || {});
         const rows = Array.isArray(data) ? data : (data.carta || data.items || []);
@@ -462,7 +488,7 @@
         if (!real.length) return mostrarError();
         carta = real; render();
       })
-      .catch(e => { console.warn('Error al cargar la carta:', e.message); mostrarError(); });
+      .catch(e => { clearTimeout(t); console.warn('Error al cargar la carta:', e.message); mostrarError(); });
   }
 
   // ── Render carta ──
@@ -528,15 +554,39 @@
          ${p.desc ? `<p class="item-desc">${esc(p.desc)}</p>` : ''}
          <span class="item-price">${fmt(p.prec)}</span>
        </div>` +
-      (p.disp ? `<button class="item-add" aria-label="Añadir">+${q ? `<span class="qbadge">${q}</span>` : ''}</button>` : '');
+      (!p.disp ? ''
+        : q ? `<div class="item-step">
+                 <button data-menos aria-label="Quitar uno">−</button>
+                 <span class="n">${q}</span>
+                 <button data-mas aria-label="Añadir otro">+</button>
+               </div>`
+             : `<button class="item-add" aria-label="Añadir">+</button>`);
     if (p.disp) {
-      // Tocar el plato → ficha con opciones; "+" → añadir directo
+      // Tocar el plato → ficha con opciones; "+" / "−" → ajustar sin abrir la ficha
       row.onclick = () => abrirFicha(idx);
-      row.querySelector('.item-add').onclick = (e) => { e.stopPropagation(); addLinea(p, 1, ''); };
+      const add = row.querySelector('.item-add');
+      if (add) add.onclick = e => { e.stopPropagation(); addLinea(p, 1, ''); };
+      const mas = row.querySelector('[data-mas]');
+      if (mas) mas.onclick = e => { e.stopPropagation(); addLinea(p, 1, ''); };
+      const menos = row.querySelector('[data-menos]');
+      if (menos) menos.onclick = e => { e.stopPropagation(); quitarUno(p.nom); };
     } else {
       row.onclick = () => toast('Este plato está agotado ahora mismo');
     }
     return row;
+  }
+
+  // Quita una unidad del plato. Si hay varias líneas (notas distintas), toca la última añadida.
+  function quitarUno(nom) {
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].nom === nom) {
+        lines[i].qty--;
+        if (lines[i].qty <= 0) lines.splice(i, 1);
+        saveCart(); render();
+        if ($('#checkout').classList.contains('show')) pintarCarrito();
+        return;
+      }
+    }
   }
 
   // ── Ficha de plato ──
@@ -551,6 +601,7 @@
     $('#dishQty').textContent = '1';
     actualizarBotonFicha();
     $('#dish').classList.add('show');
+    abrirCapa('dish');
   }
   function pintarAlergenos(p) {
     const el = $('#dishAlerg');
@@ -561,7 +612,21 @@
       el.innerHTML = '<p class="alerg-none">Alérgenos no especificados — consúltalos con el restaurante.</p>';
     }
   }
-  function cerrarFicha() { $('#dish').classList.remove('show'); }
+  // ── Botón "atrás" del móvil ──
+  // Cada panel que se abre añade una entrada al historial, así el back nativo lo cierra
+  // en vez de salir de la web (y volver a WhatsApp). `fromPop` evita rebobinar dos veces.
+  function abrirCapa(nombre) { history.pushState({ capa: nombre }, ''); }
+  function cerrarCapa(fromPop) { if (!fromPop) history.back(); }
+  window.addEventListener('popstate', () => {
+    if ($('#dish').classList.contains('show')) return cerrarFicha(true);
+    if ($('#checkout').classList.contains('show')) return cerrarCheckout(true);
+  });
+
+  function cerrarFicha(fromPop) {
+    if (!$('#dish').classList.contains('show')) return;
+    $('#dish').classList.remove('show');
+    cerrarCapa(fromPop);
+  }
   function actualizarBotonFicha() {
     const p = carta[dishIdx];
     $('#dishAdd').textContent = `Añadir · ${fmt(p.prec * dishQty)}`;
@@ -626,8 +691,16 @@
   }
 
   // ── Checkout ──
-  $('#goCheckout').onclick = () => { if (!numItems()) return; pintarCarrito(); $('#checkout').classList.add('show'); };
-  $('#back').onclick = () => $('#checkout').classList.remove('show');
+  $('#goCheckout').onclick = () => {
+    if (!numItems()) return;
+    pintarCarrito(); $('#checkout').classList.add('show'); abrirCapa('checkout');
+  };
+  function cerrarCheckout(fromPop) {
+    if (!$('#checkout').classList.contains('show')) return;
+    $('#checkout').classList.remove('show');
+    cerrarCapa(fromPop);
+  }
+  $('#back').onclick = () => cerrarCheckout();
 
   function pintarCarrito() {
     const cont = $('#cartLines'); cont.innerHTML = '';
@@ -654,7 +727,7 @@
     cont.querySelectorAll('[data-dec]').forEach(b => b.onclick = () => {
       const i = +b.dataset.dec; lines[i].qty--; if (lines[i].qty <= 0) lines.splice(i, 1);
       saveCart(); pintarCarrito(); render();
-      if (!lines.length) $('#checkout').classList.remove('show');
+      if (!lines.length) cerrarCheckout();
     });
     cont.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
       const i = +b.dataset.edit;
