@@ -323,16 +323,18 @@
         </div>
       </div>
 
-      <label class="f">¿Cómo pagas?</label>
-      <div class="toggle" id="tgPago">
-        <button data-p="tarjeta" class="active">💳 Tarjeta</button>
-        <button data-p="metalico">💵 Metálico</button>
-      </div>
+      <div id="pagoWrap" class="hidden">
+        <label class="f">¿Cómo pagas?</label>
+        <div class="toggle" id="tgPago">
+          <button data-p="tarjeta" class="active">💳 Tarjeta</button>
+          <button data-p="metalico">💵 Metálico</button>
+        </div>
 
-      <div id="cashWrap" class="hidden">
-        <label class="f">¿Con cuánto pagas? (para el cambio)</label>
-        <input class="t" id="fPagaCon" type="text" inputmode="decimal" placeholder="Importe con el que pagas">
-        <div id="cambioInfo" class="brk" style="padding-top:8px;"></div>
+        <div id="cashWrap" class="hidden">
+          <label class="f">¿Con cuánto pagas? (para el cambio)</label>
+          <input class="t" id="fPagaCon" type="text" inputmode="decimal" placeholder="Importe con el que pagas">
+          <div id="cambioInfo" class="brk" style="padding-top:8px;"></div>
+        </div>
       </div>
 
       <label class="f">Indicaciones para el restaurante</label>
@@ -359,8 +361,10 @@
   const NAME = P.get('n')   || '';
   const RID  = P.get('r')   || 'demo';
   const API  = (P.get('api') || 'https://n8n.danipr20.com').replace(/\/$/, '');
-  const MENU_URL   = `${API}/webhook/menu?r=${encodeURIComponent(RID)}&_=${Date.now()}`;
-  const PEDIDO_URL = `${API}/webhook/pedido-web`;
+  // La ruta lleva el id del restaurante (menu-{r}, pedido-web-{r}): cada restaurante
+  // es un workflow n8n distinto y sus webhooks no pueden compartir ruta.
+  const MENU_URL   = `${API}/webhook/menu-${encodeURIComponent(RID)}?r=${encodeURIComponent(RID)}&_=${Date.now()}`;
+  const PEDIDO_URL = `${API}/webhook/pedido-web-${encodeURIComponent(RID)}`;
 
   // Config de negocio: llega del backend (hoja "config"); la URL puede forzar valores.
   const URL_ENVIO = P.get('envio'), URL_MIN = P.get('min');
@@ -768,6 +772,7 @@
     b.classList.add('active');
     entrega = b.dataset.e;
     $('#dirWrap').classList.toggle('hidden', entrega !== 'delivery');
+    $('#pagoWrap').classList.toggle('hidden', entrega !== 'delivery');
     pintarDesglose();
   });
   $('#tgPago').querySelectorAll('button').forEach(b => b.onclick = () => {
@@ -813,17 +818,19 @@
     }
 
     let pagaCon = null, cambio = null;
-    if (pago === 'metalico') {
+    if (entrega === 'delivery' && pago === 'metalico') {
       const pc = parseFloat(($('#fPagaCon').value || '').replace(',', '.'));
       if (pc) { pagaCon = pc; cambio = +(pc - totalActual()).toFixed(2); }
     }
+    // Recogida: paga como quiera en el mostrador, no se pregunta el método online.
+    const metodoPago = entrega === 'delivery' ? pago : null;
 
     const payload = {
       wa: WA, r: RID,
       cliente: { nombre, tel },
       entrega,
       direccion, direccionTxt,
-      pago: { metodo: pago, pagaCon, cambio },
+      pago: { metodo: metodoPago, pagaCon, cambio },
       notas,
       items: lines.map(l => ({ nom: l.nom, prec: l.prec, qty: l.qty, nota: l.nota || '' })),
       subtotal: subtotal(), envio: envioActual(), total: totalActual()
