@@ -5,15 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Carta · Pedido</title>
 <style>
+  /* Tokens compartidos por cualquier tema (colores neutros, no de marca) */
   :root {
     --bg: #f4f5f7;
     --card: #ffffff;
     --text: #1a1d21;
     --muted: #6b7280;
     --line: #e5e7eb;
-    --brand: #128c7e;
-    --brand-dark: #075e54;
-    --accent: #25d366;
     --danger: #ef4444;
     --shadow: 0 1px 3px rgba(0,0,0,.08);
   }
@@ -22,6 +20,34 @@
       --bg: #0f1418; --card: #1b2127; --text: #e9edf0; --muted: #9aa4ae;
       --line: #2a323a; --shadow: 0 1px 3px rgba(0,0,0,.4);
     }
+  }
+
+  /* Tema por defecto: acceso directo (QR / sin bot) — neutro a propósito,
+     para no "vestir" la carta de una app de mensajería si no viene de ninguna. */
+  :root, :root[data-theme="web"] {
+    --brand: #57534e;
+    --brand-dark: #292524;
+    --accent: #b45309;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root, :root[data-theme="web"] { --brand: #a8a29e; --brand-dark: #1c1917; --accent: #f59e0b; }
+  }
+
+  /* Tema WhatsApp */
+  :root[data-theme="whatsapp"] {
+    --brand: #128c7e;
+    --brand-dark: #075e54;
+    --accent: #25d366;
+  }
+
+  /* Tema Telegram */
+  :root[data-theme="telegram"] {
+    --brand: #229ED9;
+    --brand-dark: #17212B;
+    --accent: #2AABEE;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-theme="telegram"] { --brand: #2AABEE; --brand-dark: #17212B; --accent: #54A9EB; }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; }
@@ -358,8 +384,18 @@
 
   const P = new URLSearchParams(location.search);
   const WA   = P.get('wa')  || '';
+  const TG   = P.get('tg')  || '';
   const NAME = P.get('n')   || '';
   const RID  = P.get('r')   || 'demo';
+  // Canal de entrada: lo pone el bot que generó el enlace (wa= o tg=). Si no
+  // viene ninguno (QR directo), no hay canal de vuelta — el pedido sigue
+  // funcionando, solo que no se puede avisar al cliente por chat después.
+  const CANAL    = TG ? 'telegram' : (WA ? 'whatsapp' : '');
+  const CANAL_ID = TG || WA || '';
+  // Tema visual por canal de entrada: cada bot pasa &theme=whatsapp / &theme=telegram
+  // al generar el enlace. Sin bot (QR directo) → tema neutro por defecto.
+  const THEME = ['whatsapp', 'telegram'].includes(P.get('theme')) ? P.get('theme') : 'web';
+  document.documentElement.setAttribute('data-theme', THEME);
   const API  = (P.get('api') || 'https://n8n.danipr20.com').replace(/\/$/, '');
   // La ruta lleva el id del restaurante (menu-{r}, pedido-web-{r}): cada restaurante
   // es un workflow n8n distinto y sus webhooks no pueden compartir ruta.
@@ -397,21 +433,12 @@
   const fmt = n => (Number(n) || 0).toFixed(2).replace('.', ',') + ' €';
 
   // ── Persistencia ──
-  // El carrito caduca: sirve para no perderlo si recargas, pero no para resucitar
-  // un pedido de hace días cuando el cliente vuelve a abrir la carta.
-  const CART_TTL_MS = 4 * 60 * 60 * 1000;   // 4 horas
-  function saveCart() {
-    try { localStorage.setItem(LS_KEY, JSON.stringify({ t: Date.now(), lines })); } catch (e) {}
-  }
+  // El carrito NO sobrevive entre visitas: cada vez que se abre la carta empieza
+  // vacío, para que nadie acabe pidiendo por error algo de una visita anterior.
+  function saveCart() {}   // no-op (se deja la función para no tocar cada punto que la llama)
   function loadCart() {
     lines = [];
-    try {
-      const raw = JSON.parse(localStorage.getItem(LS_KEY));
-      if (!raw) return;
-      if (Array.isArray(raw)) return localStorage.removeItem(LS_KEY);   // formato viejo (sin fecha)
-      if (Date.now() - (raw.t || 0) > CART_TTL_MS) return localStorage.removeItem(LS_KEY);
-      lines = Array.isArray(raw.lines) ? raw.lines : [];
-    } catch (e) { lines = []; }
+    try { localStorage.removeItem(LS_KEY); } catch (e) {}   // limpia el carrito guardado de versiones anteriores
   }
 
   // ── Normaliza un plato (del backend o del demo) con valores por defecto ──
@@ -826,7 +853,7 @@
     const metodoPago = entrega === 'delivery' ? pago : null;
 
     const payload = {
-      wa: WA, r: RID,
+      canal: CANAL, canalId: CANAL_ID, r: RID,
       cliente: { nombre, tel },
       entrega,
       direccion, direccionTxt,
