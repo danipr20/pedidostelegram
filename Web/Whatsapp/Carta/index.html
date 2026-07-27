@@ -63,6 +63,10 @@
     padding: 12px 16px 10px; box-shadow: var(--shadow);
   }
   header h1 { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+  .mesa-badge {
+    display: inline-block; font-size: 12px; font-weight: 700; color: #fff;
+    background: rgba(255,255,255,.2); border-radius: 999px; padding: 3px 10px; margin: -4px 0 8px;
+  }
   .search {
     width: 100%; padding: 10px 12px; border: none; border-radius: 10px;
     font-size: 15px; background: rgba(255,255,255,.15); color: #fff;
@@ -263,6 +267,14 @@
   /* Plato destacado */
   .star { color: #f59e0b; margin-right: 3px; }
 
+  /* RGPD */
+  .rgpd-inline { font-size: 12px; color: var(--muted); text-align: center; margin: 14px 4px 0; line-height: 1.5; }
+  .rgpd { margin: 14px 0 4px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .rgpd summary { font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; list-style: none; padding: 4px 0; }
+  .rgpd summary::-webkit-details-marker { display: none; }
+  .rgpd h4 { font-size: 12px; font-weight: 700; margin: 12px 0 3px; color: var(--text); }
+  .rgpd p { font-size: 12px; color: var(--muted); margin: 0; line-height: 1.5; }
+
   /* Spinner de carga */
   .spinner { width: 34px; height: 34px; margin: 0 auto 14px; border-radius: 50%;
     border: 3px solid var(--line); border-top-color: var(--brand); animation: spin .8s linear infinite; }
@@ -273,6 +285,7 @@
 
   <header>
     <h1 id="localName">Carta</h1>
+    <div class="mesa-badge hidden" id="mesaBadge"></div>
     <input class="search" id="search" placeholder="🔎 Buscar plato…" autocomplete="off">
   </header>
 
@@ -325,16 +338,20 @@
       <div class="breakdown" id="breakdown"></div>
       <div class="warn hidden" id="minWarn"></div>
 
-      <label class="f">Nombre — confírmalo o cámbialo</label>
-      <input class="t" id="fNombre" placeholder="Tu nombre" autocomplete="name">
+      <div id="clienteWrap">
+        <label class="f">Nombre — confírmalo o cámbialo</label>
+        <input class="t" id="fNombre" placeholder="Tu nombre" autocomplete="name">
 
-      <label class="f">Teléfono (tu WhatsApp) — confírmalo o cámbialo</label>
-      <input class="t" id="fTel" type="tel" placeholder="Tu teléfono" autocomplete="tel">
+        <label class="f">Teléfono (tu WhatsApp) — confírmalo o cámbialo</label>
+        <input class="t" id="fTel" type="tel" placeholder="Tu teléfono" autocomplete="tel">
+      </div>
 
-      <label class="f">¿Cómo lo recibes?</label>
-      <div class="toggle" id="tgEntrega">
-        <button data-e="pickup" class="active">🏃 Recoger</button>
-        <button data-e="delivery">🛵 A domicilio</button>
+      <div id="entregaWrap">
+        <label class="f">¿Cómo lo recibes?</label>
+        <div class="toggle" id="tgEntrega">
+          <button data-e="pickup" class="active">🏃 Recoger</button>
+          <button data-e="delivery">🛵 A domicilio</button>
+        </div>
       </div>
 
       <div id="dirWrap" class="hidden">
@@ -367,12 +384,45 @@
       <textarea class="t" id="fNotas" rows="2" placeholder="Opcional"></textarea>
 
       <button class="send" id="send">Enviar pedido</button>
+
+      <p class="rgpd-inline" id="rgpdInline">
+        🔒 Al enviar, tus datos se usan solo para gestionar este pedido y se borran al completarlo.
+      </p>
+
+      <details class="rgpd" id="rgpdBox">
+        <summary>📄 Política de privacidad y protección de datos ▾</summary>
+
+        <h4>Responsable del tratamiento</h4>
+        <p id="rgpdResponsable"></p>
+
+        <h4>¿Qué datos recogemos?</h4>
+        <p id="rgpdDatos"></p>
+
+        <h4>¿Para qué los usamos?</h4>
+        <p>Exclusivamente para preparar y entregarte este pedido. No se usan para publicidad ni para ningún otro fin, ni se elaboran perfiles.</p>
+
+        <h4>¿Cuánto tiempo los guardamos?</h4>
+        <p>El tiempo mínimo necesario para completar el pedido. Se eliminan automáticamente en un máximo de 6 horas.</p>
+
+        <h4>Base legal</h4>
+        <p>Ejecución de contrato (Art. 6.1.b RGPD): los datos son imprescindibles para poder entregarte el pedido, no hace falta consentimiento adicional.</p>
+
+        <h4>¿Cedemos datos a terceros?</h4>
+        <p id="rgpdTerceros"></p>
+
+        <h4>Tus derechos</h4>
+        <p>Puedes ejercer los derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad contactando con el restaurante por los medios indicados arriba. También puedes reclamar ante la Agencia Española de Protección de Datos (<strong>aepd.es</strong>).</p>
+
+        <h4>Cookies</h4>
+        <p>Esta página no usa cookies ni rastreadores. Solo guarda tu pedido en el propio dispositivo mientras lo estás haciendo.</p>
+      </details>
     </div>
 
     <div class="status hidden" id="done">
       <div class="emoji">✅</div>
       <h2>¡Pedido enviado!</h2>
-      <p>Vuelve a WhatsApp: el restaurante te confirmará en un momento.</p>
+      <!-- Texto real: lo fija el JS según el canal de entrada, antes de mostrarlo -->
+      <p id="doneMsg">El restaurante lo está revisando.</p>
     </div>
   </div>
 
@@ -387,6 +437,10 @@
   const TG   = P.get('tg')  || '';
   const NAME = P.get('n')   || '';
   const RID  = P.get('r')   || 'demo';
+  // Modo mesa: QR pegado en una mesa concreta (bares/restaurantes con servicio en sitio).
+  // Va directo a cocina, sin preguntar recogida/domicilio ni datos de contacto —
+  // el cliente ya está físicamente ahí, no hace falta avisarle por chat.
+  const MESA = P.get('mesa') || '';
   // Canal de entrada: lo pone el bot que generó el enlace (wa= o tg=). Si no
   // viene ninguno (QR directo), no hay canal de vuelta — el pedido sigue
   // funcionando, solo que no se puede avisar al cliente por chat después.
@@ -397,6 +451,25 @@
   const THEME = ['whatsapp', 'telegram'].includes(P.get('theme')) ? P.get('theme') : 'web';
   document.documentElement.setAttribute('data-theme', THEME);
   const API  = (P.get('api') || 'https://n8n.danipr20.com').replace(/\/$/, '');
+
+  // Si el enlace viene del bot de Telegram, se abrió con un botón "web_app":
+  // Telegram lo embebe dentro de la propia app (no sale al navegador). Cargamos
+  // su SDK solo en ese caso — para WhatsApp/QR no hace falta ni tiene efecto.
+  if (TG) {
+    const s = document.createElement('script');
+    s.src = 'https://telegram.org/js/telegram-web-app.js';
+    s.onload = () => {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      if (!tg) return;
+      tg.ready();
+      tg.expand();                    // ocupa toda la altura, no se queda a media pantalla
+      try {
+        tg.setHeaderColor('#17212B'); // mismo azul oscuro del tema Telegram
+        tg.setBackgroundColor(tg.colorScheme === 'dark' ? '#0f1418' : '#f4f5f7');
+      } catch (e) {}                  // versiones viejas de la app pueden no soportar estos métodos
+    };
+    document.head.appendChild(s);
+  }
   // La ruta lleva el id del restaurante (menu-{r}, pedido-web-{r}): cada restaurante
   // es un workflow n8n distinto y sus webhooks no pueden compartir ruta.
   const MENU_URL   = `${API}/webhook/menu-${encodeURIComponent(RID)}?r=${encodeURIComponent(RID)}&_=${Date.now()}`;
@@ -423,7 +496,7 @@
 
   let carta = [];
   let lines = [];               // [{ nom, prec, qty, nota }]
-  let entrega = 'pickup';
+  let entrega = MESA ? 'mesa' : 'pickup';
   let pago = 'tarjeta';
   let stickH = 0, lastActive = -1;
   let dishIdx = null, dishQty = 1;
@@ -464,7 +537,33 @@
     if (BIZ.envio        != null && !URL_ENVIO) COSTE_ENVIO   = BIZ.envio;
     if (BIZ.minDomicilio != null && !URL_MIN)   PEDIDO_MINIMO = BIZ.minDomicilio;
     if (BIZ.minRecogida  != null)               MIN_RECOGIDA  = BIZ.minRecogida;
+    pintarRgpd();
     evaluarHorario();
+  }
+
+  // ── Aviso legal: se rellena con los datos del restaurante (hoja "config") ──
+  // Sin nombre de responsable no se puede mostrar una política válida, así que
+  // se oculta el bloque entero antes que enseñar uno a medias.
+  function pintarRgpd() {
+    const nombre = (BIZ.nombre || '').trim();
+    if (!nombre) { $('#rgpdBox').classList.add('hidden'); return; }
+    $('#rgpdBox').classList.remove('hidden');
+
+    const contacto = [
+      BIZ.email    ? `Email: ${BIZ.email}` : '',
+      BIZ.telefono ? `Tel: ${BIZ.telefono}` : '',
+      BIZ.direccion || ''
+    ].filter(Boolean).join(' · ');
+    $('#rgpdResponsable').textContent = [nombre, BIZ.nif || '', contacto].filter(Boolean).join(' · ');
+
+    $('#rgpdDatos').textContent = MESA
+      ? 'En los pedidos en mesa solo se registra el número de mesa y los platos: no pedimos nombre, teléfono ni dirección.'
+      : 'Nombre, teléfono y, en pedidos a domicilio, la dirección de entrega.';
+
+    const canalTxt = CANAL === 'whatsapp' ? 'WhatsApp' : CANAL === 'telegram' ? 'Telegram' : '';
+    $('#rgpdTerceros').textContent = canalTxt
+      ? `No se ceden datos con fines comerciales. ${canalTxt} actúa únicamente como canal de comunicación y se rige por su propia política de privacidad.`
+      : 'No se ceden datos a terceros con fines comerciales.';
   }
 
   // ── ¿Abierto ahora? (horario y día de cierre de la config) ──
@@ -788,6 +887,7 @@
       bloqueo = `Pedido mínimo para domicilio: ${fmt(PEDIDO_MINIMO)}. Te faltan ${fmt(PEDIDO_MINIMO - sub)}.`;
     else if (entrega === 'pickup' && MIN_RECOGIDA && sub < MIN_RECOGIDA)
       bloqueo = `Pedido mínimo para recoger: ${fmt(MIN_RECOGIDA)}. Te faltan ${fmt(MIN_RECOGIDA - sub)}.`;
+    // En mesa no aplica mínimo: el cliente ya está sentado, no hay coste de reparto que compensar.
     if (bloqueo) { warn.textContent = bloqueo; warn.classList.remove('hidden'); $('#send').disabled = true; }
     else { warn.classList.add('hidden'); $('#send').disabled = false; }
     actualizarCambio();
@@ -827,8 +927,11 @@
     const tel    = $('#fTel').value.trim();
     const notas  = $('#fNotas').value.trim();
     if (cerradoAhora) { toast('Ahora mismo está cerrado'); return; }
-    if (!nombre) { toast('Añade tu nombre'); $('#fNombre').focus(); return; }
-    if (!tel)    { toast('Añade tu teléfono'); $('#fTel').focus(); return; }
+    // En mesa no se piden datos de contacto: el pedido va directo a cocina, sin aviso por chat.
+    if (entrega !== 'mesa') {
+      if (!nombre) { toast('Añade tu nombre'); $('#fNombre').focus(); return; }
+      if (!tel)    { toast('Añade tu teléfono'); $('#fTel').focus(); return; }
+    }
     if (!numItems()) { toast('Tu pedido está vacío'); return; }
     if (entrega === 'pickup' && MIN_RECOGIDA && subtotal() < MIN_RECOGIDA) { toast('No llegas al pedido mínimo para recoger'); return; }
 
@@ -854,6 +957,7 @@
 
     const payload = {
       canal: CANAL, canalId: CANAL_ID, r: RID,
+      mesa: MESA,
       cliente: { nombre, tel },
       entrega,
       direccion, direccionTxt,
@@ -870,6 +974,14 @@
       });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       lines = []; saveCart(); render();
+      // El mensaje depende del canal por el que entró: mandar a alguien "vuelve
+      // a WhatsApp" cuando vino por Telegram (o por un QR, sin chat ninguno) es
+      // desconcertante. Si hay canal, ahí le llega el resumen completo del pedido.
+      $('#doneMsg').textContent =
+        entrega === 'mesa'      ? 'Tu pedido ya está en cocina. En breve te lo traen a la mesa.' :
+        CANAL === 'whatsapp'    ? 'Vuelve a WhatsApp: te hemos enviado el resumen de tu pedido para que lo revises.' :
+        CANAL === 'telegram'    ? 'Vuelve a Telegram: te hemos enviado el resumen de tu pedido para que lo revises.' :
+                                  'El restaurante está revisando tu pedido. Te avisarán en un momento.';
       $('#checkoutBody').classList.add('hidden');
       $('#done').classList.remove('hidden');
     } catch (e) {
@@ -883,6 +995,12 @@
   // ── Init ──
   if (WA)   $('#fTel').value = '+' + WA;
   if (NAME) $('#fNombre').value = NAME;
+  if (MESA) {
+    $('#mesaBadge').textContent = '🍽️ Mesa ' + MESA;
+    $('#mesaBadge').classList.remove('hidden');
+    $('#entregaWrap').classList.add('hidden');
+    $('#clienteWrap').classList.add('hidden');
+  }
   loadCart();
   cargar();
   setInterval(evaluarHorario, 60000);   // recalcula abierto/cerrado si la página sigue abierta
